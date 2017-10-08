@@ -4,14 +4,26 @@ olympus = import_da('olympus')
 class Replica(process):
     def setup(olympus:olympus.Olympus, config:dict):
         print("Replica setup :Config received :", config)
+        head = config['head']
+        tail = config['tail']
 
     def run():
         print("Replica run: started")
         send(('ReplicasUpNow',), to=olympus)
-        await(some(received(msg_var,)))
+        await(some(received(('OlympusRequest',msg_var,))))
 
-    def receive(msg=msg_var, from_=olympus):
-        print("Replica recv: msg received from olympus :", msg_var)
+    def receive(msg=('OlympusRequest', msg_var,), from_=olympus):
+        print("Replica Head: msg received from olympus :", msg_var)
+        #print("Config in recv :", config)
+        send(('ForwardRequest', msg_var,), to=config[0])
+
+    def receive(msg=('ForwardRequest', msg_var, ), from_=replica):
+        print("Replica Intermediate: msg received from previous replica :", msg_var)
+        #send to next replica
+        send(('TailRequest', msg_var), to=config['tail'])
+
+    def receive(msg=('TailRequest', msg_var, ), from_=replica):
+        print("Replica recv: msg received to tail replica :", msg_var)
 
 def main():
     print("In replica main")
