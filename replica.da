@@ -1,0 +1,17 @@
+import sys
+olympus = import_da('olympus')
+
+class Replica(process):
+    def setup(olympus:olympus.Olympus, config:dict):
+        print("Replica setup :Config received :", config)
+
+    def run():
+        print("Replica run: started")
+        send(('ReplicasUpNow',), to=olympus)
+        await(some(received(msg_var,)))
+
+    def receive(msg=msg_var, from_=olympus):
+        print("Replica recv: msg received from olympus :", msg_var)
+
+def main():
+    print("In replica main")
