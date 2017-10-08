@@ -46,5 +46,5 @@ read_config_file()
 separate_properties()
 
 # print("config :: " + str(config) + "\n\n")
-#print("client properties :: " + str(get_client_properties()) + "\n\n")
+# print("client properties :: " + str(get_client_properties()) + "\n\n")
 # print("olympus properties :: " + str(get_olympus_properties()) + "\n\n")
