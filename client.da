@@ -1,0 +1,52 @@
+import sys
+from random import randint
+config = import_da('read_config_file')
+
+client_properties = {}
+clients = []
+hosts   = []
+
+
+class Client(process):
+	def setup(timeout:int): pass
+
+	def run():
+		output("executed")
+		send(('request',), to=Olympus)
+
+
+def main():
+	argv = sys.argv
+
+	client = new(Client, num=1)
+	setup(client, (3000,))
+	print("client " + str(client))
+
+	start(client.pop())
+	#get_workload(client_properties['workload'])
+
+
+
+
+
+
+# def read_properties():
+# 	config.read_config_file()
+# 	return config.get_client_properties()
+
+
+# def pseudorandom(seed, number):
+# 	random.seed(seed)
+# 	operations = [randint(0,3) for index in range(0, number)]
+# 	return operations
+
+
+# def get_workload(workload):
+# 	client_workload = []
+# 	for index in range(0, len(workload)):
+# 		if not workload[index].startswith('pseudorandom'):
+# 			client_workload.append(workload[index])			
+# 		else:
+# 			client_workload.append(workload[index].split(';'))
+# 	print("workload :: ")
+# 	print(client_workload)
