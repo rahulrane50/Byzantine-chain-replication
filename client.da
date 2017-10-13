@@ -1,18 +1,26 @@
 import sys
 from random import randint
+olympus = import_da('olympus')
 config = import_da('read_config_file')
 
 client_properties = {}
 clients = []
 hosts   = []
-
+olympus
 
 class Client(process):
-	def setup(timeout:int): pass
+	def setup(timeout:int, configuration:set):
+		print("client started")
 
 	def run():
 		output("executed")
-		send(('request',), to=Olympus)
+		#send(('request',), to='name@host.')
+
+
+	# def send_message_to_head():
+ #        head = configuration['head']
+	# 	send(('request',), to='name@host.')
+
 
 
 def main():
