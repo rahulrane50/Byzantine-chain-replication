@@ -2,7 +2,7 @@ import sys
 olympus = import_da('olympus')
 
 class Replica(process):
-    def setup(olympus:olympus.Olympus, config:dict):
+    def setup(olympus:olympus.Olympus, config:dict, reverse_config:dict):
         print("Replica setup :Config received :", config)
         head = config['head']
         tail = config['tail']
@@ -10,20 +10,33 @@ class Replica(process):
     def run():
         print("Replica run: started")
         send(('ReplicasUpNow',), to=olympus)
-        await(some(received(('OlympusRequest',msg_var,))))
+        #await(some(received(('OlympusRequest',msg_var,))) or some(received(('ForwardRequest',msg_var,))) or some(received(('TailRequest',msg_var,))) )
+
+        #this exits at the first TailRequest, but we will have just one TailRequest
+        #so is this correct?
+        await(some(received(('TailRequest',msg_var,))) )
+        #always keep replicas on
+        #await(False)
+
 
     def receive(msg=('OlympusRequest', msg_var,), from_=olympus):
         print("Replica Head: msg received from olympus :", msg_var)
         #print("Config in recv :", config)
         send(('ForwardRequest', msg_var,), to=config[0])
 
+
     def receive(msg=('ForwardRequest', msg_var, ), from_=replica):
         print("Replica Intermediate: msg received from previous replica :", msg_var)
+        my_index = reverse_config[self]
         #send to next replica
-        send(('TailRequest', msg_var), to=config['tail'])
+        if  my_index == len(config) - 3:
+            send(('TailRequest', msg_var), to=config['tail'])
+        else:
+            send(('ForwardRequest', msg_var,), to=config[my_index + 1])
+
 
     def receive(msg=('TailRequest', msg_var, ), from_=replica):
-        print("Replica recv: msg received to tail replica :", msg_var)
+        print("Replica Tail: msg received to tail replica :", msg_var)
 
 def main():
     print("In replica main")
