@@ -1,6 +1,8 @@
 import sys
 replica = import_da('replica')
 
+#global_olympus
+
 class Olympus(process):
     def setup(no_of_replicas:int):
         pass
@@ -10,20 +12,35 @@ class Olympus(process):
 
     def run():
         #Start and setup new replicas.
-        config = {1: 'replica_1', 2: 'replica_2'}
+        #config = {1: 'replica_1', 2: 'replica_2'}
+        config = {}
         set_of_replicas = new(replica.Replica, num=no_of_replicas)
-        setup(set_of_replicas, (self, config,))
-        start(set_of_replicas)
-        await(len(listof(set_of_replicas, received(('ReplicasUpNow',), from_=set_of_replicas))) == no_of_replicas)
+        list_of_replicas = list(set_of_replicas)
+        print("set of replicas :", list_of_replicas)
+        config['head'] = list_of_replicas[0]
+        config['tail'] = list_of_replicas[-1]
+        i = 0
+        for replica1 in list_of_replicas[1:-1]:
+            config[i] = replica1
+            i += 1
 
+        print("New config :", config)
+
+        setup(list_of_replicas, (self, config,))
+        start(list_of_replicas)
+        await(len(listof(set_of_replicas, received(('ReplicasUpNow',), from_=set_of_replicas))) == 3)
+
+        #Create config of replicas from set_of_replicas and send it client. Fork client process
+    
     def receive(msg=('ReplicasUpNow',), from_=set_of_replicas):
         #Broadcast msg to all replicas
         anymsg = "This is Olympus!!"
         print("Sending message :", anymsg)
-        send(anymsg, to=set_of_replicas)
+        send(('OlympusRequest', anymsg), to=list(set_of_replicas)[0])
 
 def main():
     #Olympus can create all public and private keys for clients and replicas and send them to the relevant processes.
     olympus = new(Olympus, [3], num=1)
+    #global_olympus = olympus
     start(olympus)
  
