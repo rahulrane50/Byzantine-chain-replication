@@ -10,32 +10,29 @@ class Olympus(process):
        pass
 
     def run():
-        #Start and setup new replicas.
-        #config = {1: 'replica_1', 2: 'replica_2'}
-
-        """start replicas"""
-        reverse_config = {}
+        #Start and setup new replicas.        
         set_of_replicas = new(replica.Replica, num=no_of_replicas)
         list_of_replicas = list(set_of_replicas)
         
         config['head'] = list_of_replicas[0]
         config['tail'] = list_of_replicas[-1]
-        
-        reverse_config[list_of_replicas[0]] = 'head'
-        reverse_config[list_of_replicas[-1]] = 'tail'
 
-        i = 0
-        for replica1 in list_of_replicas[1:-1]:
-            config[i] = replica1
-            reverse_config[replica1] = i
-            i += 1
+        index = 1
+        for replica_itr in list_of_replicas[1:-1]:
+            config['replica_' + str(index)] = replica_itr
+            index += 1
 
-        print("New self config :", self.config)
-        print(len(config))
-        print("New reverse config :", reverse_config)
+        #setup and start head and tail
+        setup(config['head'], (self, config, 'head', ))
+        setup(config['tail'], (self, config, 'tail', ))
+        start(config['head'])
+        start(config['tail'])
 
-        setup(list_of_replicas, (self, config, reverse_config, ))
-        start(list_of_replicas)
+        #setup and start intermediate replicas
+        for index in range(1, len(config) - 2):
+            setup(config['replica_' + str(index)], (self, config, 'replica_' + str(index)))
+            start(config['replica_' + str(index)])
+
 
         """start clients"""
         clients = new(client.Client, num=num_of_clients)

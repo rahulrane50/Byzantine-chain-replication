@@ -2,10 +2,9 @@ import sys
 olympus = import_da('olympus')
 
 class Replica(process):
-    def setup(olympus:olympus.Olympus, config:dict, reverse_config:dict):
+    def setup(olympus:olympus.Olympus, config:dict, replica_id:int):
         print("Replica setup :Config received :", config)
-        head = config['head']
-        tail = config['tail']
+        self.dictionary = {}
 
     def run():
         print("Replica run: started")
@@ -22,17 +21,17 @@ class Replica(process):
     def receive(msg=('OlympusRequest', msg_var,), from_=olympus):
         print("Replica Head: msg received from olympus :", msg_var)
         #print("Config in recv :", config)
-        send(('ForwardRequest', msg_var,), to=config[0])
+        send(('ForwardRequest', msg_var,), to=config['replica_1'])
 
 
     def receive(msg=('ForwardRequest', msg_var, ), from_=replica):
         print("Replica Intermediate: msg received from previous replica :", msg_var)
-        my_index = reverse_config[self]
+        my_index = int(replica_id.split('_')[1])
         #send to next replica
         if  my_index == len(config) - 3:
             send(('TailRequest', msg_var), to=config['tail'])
         else:
-            send(('ForwardRequest', msg_var,), to=config[my_index + 1])
+            send(('ForwardRequest', msg_var,), to=config['replica_' + str(my_index + 1)])
 
 
     def receive(msg=('TailRequest', msg_var, ), from_=replica):
