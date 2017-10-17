@@ -1,41 +1,50 @@
 import sys
 olympus = import_da('olympus')
+client  = import_da('client')
 
 class Replica(process):
     def setup(olympus:olympus.Olympus, config:dict, replica_id:int):
-        print("Replica setup :Config received :", config)
+        #output("Replica setup :Config received :", config)
         self.dictionary = {}
 
     def run():
-        print("Replica run: started")
+        #output("Replica run: started")
         send(('ReplicasUpNow',), to=olympus)
-        #await(some(received(('OlympusRequest',msg_var,))) or some(received(('ForwardRequest',msg_var,))) or some(received(('TailRequest',msg_var,))) )
 
-        #this exits at the first TailRequest, but we will have just one TailRequest
-        #so is this correct?
-        await(some(received(('TailRequest',msg_var,))) )
-        #always keep replicas on
-        #await(False)
+        #keep replica on till TailRequest is received
+        #await(some(received(('TailRequest',msg_var,))) )
+        await(False)
+
+    def receive(msg=('ClientRequest', operation,), from_=client):
+        output("Replica Head: msg received from client :", operation)        
+        #dictionary.operation
+        send(('ForwardRequest', operation, client,), to=config['replica_1'])
+
+    # def receive(msg=('OlympusRequest', operation,), from_=olympus):
+    #     output("Replica Head: msg received from olympus :", operation)
+    #     #output("Config in recv :", config)
+    #     send(('ForwardRequest', operation,), to=olympus)
 
 
-    def receive(msg=('OlympusRequest', msg_var,), from_=olympus):
-        print("Replica Head: msg received from olympus :", msg_var)
-        #print("Config in recv :", config)
-        send(('ForwardRequest', msg_var,), to=config['replica_1'])
-
-
-    def receive(msg=('ForwardRequest', msg_var, ), from_=replica):
-        print("Replica Intermediate: msg received from previous replica :", msg_var)
+    def receive(msg=('ForwardRequest', operation, client,), from_=replica):
+        output("Replica Intermediate: msg received from previous replica :", operation)
         my_index = int(replica_id.split('_')[1])
         #send to next replica
         if  my_index == len(config) - 3:
-            send(('TailRequest', msg_var), to=config['tail'])
+            send(('TailRequest', operation, client,), to=config['tail'])
         else:
-            send(('ForwardRequest', msg_var,), to=config['replica_' + str(my_index + 1)])
+            send(('ForwardRequest', operation, client,), to=config['replica_' + str(my_index + 1)])
 
 
-    def receive(msg=('TailRequest', msg_var, ), from_=replica):
-        print("Replica Tail: msg received to tail replica :", msg_var)
+    def receive(msg=('TailRequest', operation, client,), from_=replica):
+        output("Replica Tail: msg received to tail replica :", operation)
+        output("sending reply to client", client)
+        result = 'r'
+        result_shuttle = ('r', 'a')
+        # send(('Result',result), to=client)
+        send(('ResultShuttle', result_shuttle), to=client)
+        output("sent reply to client")
+
 
 def main():
-    print("In replica main")
+    output("In replica main")

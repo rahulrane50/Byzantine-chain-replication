@@ -3,59 +3,70 @@ replica = import_da('replica')
 client  = import_da('client')
 
 class Olympus(process):
-    def setup(no_of_replicas:int, num_of_clients:int):
-        self.config = {}
+    def setup(no_of_replicas:int, num_of_clients:int, set_of_replicas:set):
+        self.configuration = {}
 
     def create_keys():
        pass
 
     def run():
-        #Start and setup new replicas.        
-        set_of_replicas = new(replica.Replica, num=no_of_replicas)
-        list_of_replicas = list(set_of_replicas)
-        
-        config['head'] = list_of_replicas[0]
-        config['tail'] = list_of_replicas[-1]
-
-        index = 1
-        for replica_itr in list_of_replicas[1:-1]:
-            config['replica_' + str(index)] = replica_itr
-            index += 1
-
-        #setup and start head and tail
-        setup(config['head'], (self, config, 'head', ))
-        setup(config['tail'], (self, config, 'tail', ))
-        start(config['head'])
-        start(config['tail'])
-
-        #setup and start intermediate replicas
-        for index in range(1, len(config) - 2):
-            setup(config['replica_' + str(index)], (self, config, 'replica_' + str(index)))
-            start(config['replica_' + str(index)])
-
+        """Create configuration of replicas, and start them"""
+        configuration = create_replica_config(list(set_of_replicas))
+        setup_and_start_replicas(configuration)
 
         """start clients"""
-        clients = new(client.Client, num=num_of_clients)
-        setup(clients, (3000, config,))
-        start(clients)
-
-        #this await condition is incorrect, will change it later
-        #await(len( listof(set_of_replicas, received(('ReplicasUpNow',), from_=set_of_replicas)) ) == 3)
+        # setup_and_start_clients(300, configuration, self)
+        # setup(clients, (300, configuration, self))
+        # start(clients)
 
         #Olympus always stays on
         await(False)
-
     
-    def receive(msg=('ReplicasUpNow',), from_=replica):
+    # def receive(msg=('ReplicasUpNow',), from_=replica):
+    #     #Broadcast msg to all replicas
+    #     anymsg = "This is Olympus!!"
+    #     output("handling msg from replica :")
+    #     if(replica == configuration['head']):
+    #         send(('OlympusRequest', anymsg), to=replica)
+    def receive(msg=('GetConfiguration', client_id), from_=client):
+        output('Sending configuration to client:', client_id)
+        send(('Configuration', configuration), to=client)
+
+    def receive(msg=('ForwardRequest',operation,), from_=replica):
         #Broadcast msg to all replicas
         anymsg = "This is Olympus!!"
-        print("Sending message :", anymsg)
-        if(replica == config['head']):
+        output("handling forward request msg from replica :", operation)
+        if(replica == configuration['head']):
             send(('OlympusRequest', anymsg), to=replica)
+
+
+    def create_replica_config(list_of_replicas):
+        configuration['head'] = list_of_replicas[0]
+        configuration['tail'] = list_of_replicas[-1]
+
+        index = 1
+        for replica_itr in list_of_replicas[1:-1]:
+            configuration['replica_' + str(index)] = replica_itr
+            index += 1
+        return configuration        
+
+
+    def setup_and_start_replicas(configuration):
+        #setup and start head and tail
+        setup(configuration['head'], (self, configuration, 'head', ))
+        setup(configuration['tail'], (self, configuration, 'tail', ))
+        start(configuration['head'])
+        start(configuration['tail'])
+
+        #setup and start intermediate replicas
+        for index in range(1, len(configuration) - 2):
+            setup(configuration['replica_' + str(index)], (self, configuration, 'replica_' + str(index)))
+            start(configuration['replica_' + str(index)])    
+
 
 def main():
     #Olympus can create all public and private keys for clients and replicas and send them to the relevant processes.
-    olympus = new(Olympus, [5, 3], num=1)
+    olympus = new(Olympus, [4, 1], num=1)
     #global_olympus = olympus
     start(olympus)
  
