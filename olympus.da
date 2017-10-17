@@ -1,14 +1,29 @@
 import sys
+import nacl.utils
+from nacl.public import PrivateKey, Box
 replica = import_da('replica')
 client  = import_da('client')
 
 class Olympus(process):
     def setup(no_of_replicas:int, num_of_clients:int):
         self.config = {}
+        self.public_key_map = {}
+        self.priv_key_map = {}
 
     def create_keys():
-       pass
-
+        priv_olympus = PrivateKey.generate()
+        priv_key_map['olympus'] = priv_olympus
+        public_key_map['olympus'] = priv_olympus.public_key
+        public_key_map.update(dict.fromkeys(config.keys(), 0))
+        for key, val in public_key_map.items():
+            priv_key = PrivateKey.generate()
+            priv_key_map[key] = priv_key
+            public_key_map[key] = priv_key.public_key
+         
+        priv_client = PrivateKey.generate()
+        priv_key_map['client'] = priv_client
+        public_key_map['client'] = priv_client.public_key
+        
     def run():
         #Start and setup new replicas.        
         set_of_replicas = new(replica.Replica, num=no_of_replicas)
@@ -27,6 +42,10 @@ class Olympus(process):
         setup(config['tail'], (self, config, 'tail', ))
         start(config['head'])
         start(config['tail'])
+
+        self.create_keys()
+        print("Public_key map :",public_key_map)
+        print("Private_key map :",priv_key_map)
 
         #setup and start intermediate replicas
         for index in range(1, len(config) - 2):
