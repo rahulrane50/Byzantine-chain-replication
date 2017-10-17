@@ -1,0 +1,21 @@
+import sys
+olympus = import_da('olympus')
+replica = import_da('replica')
+client = import_da('client')
+
+
+def main():
+	replicas = new(replica.Replica, num=4)
+
+	olympus_p = new(olympus.Olympus, [4, 1, replicas], num=1)
+	start(olympus_p)
+
+	num_of_clients = 1
+	clients = new(client.Client, num=num_of_clients)
+
+	clients_list = list(clients)
+	for index in range(0, num_of_clients):
+		setup(clients_list[index], (300, index, olympus_p))
+		start(clients_list[index])
+
+

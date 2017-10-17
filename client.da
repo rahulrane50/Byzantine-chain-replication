@@ -1,60 +1,110 @@
 import sys
-from random import randint
+import random
 olympus = import_da('olympus')
 config = import_da('read_config_file')
 
 client_properties = {}
-clients = []
-hosts   = []
-olympus
+
+operations_dict = {
+					0: 'put(\'message\', \'hello\')',
+					1: 'get(\'message\')',
+					2: 'slice(\'message\', \'1:5\')',
+					3: 'append(\'message\', \', world\')'
+				}
+
+def read_properties():
+	config.read_config_file()
+	return config.get_client_properties()
+
+
+def pseudorandom(seed_value, number):
+	client_workload = []
+	random.seed(seed_value)
+	operations = [random.randint(0,3) for index in range(0, number)]
+
+	for index in range(0, len(operations)):
+		client_workload.append(operations_dict[operations[index]])
+	return client_workload
+
+
+def get_workload(workload):
+	#print(workload)
+	client_workload = []
+	for index in range(0, len(workload)):
+		if workload[index].startswith('pseudorandom'):
+			function = workload[index]
+			args = (function)[function.find('(') + 1:function.find(')')]
+			values = args.split(',')
+
+			# client_workload = pseudorandom(int(values[0].strip()), int(values[1].strip()), client_workload)
+			client_workload.append(pseudorandom(int(values[0].strip()), int(values[1].strip())))
+		else:
+			# client_workload.extend([operation.strip() for operation in workload[index].split(';')])
+			client_workload.append([operation.strip() for operation in workload[index].split(';')])
+	#print('in get_workload', client_workload)
+	return client_workload
+
 
 class Client(process):
-	def setup(timeout:int, configuration:set):
-		print("client started")
+	def setup(time:int, id: int, olympus:olympus.Olympus):
+		output('Client', id, ':setup')
+		self.configuration = {}
+
+		#read workload from config file and get workload for client id
+		#this will happen for every client
+		#read file only once and get from there, later
+		client_properties = read_properties()
+		self.client_workload = []
+		client_workload = get_workload(client_properties['workload'])[0]
+		output(client_workload)
 
 	def run():
-		output("executed")
-		#send(('request',), to='name@host.')
+		output('Client', id, ': running')
+		# output("waiting twice")
+		# #await(some(received(('TailRequest',msg_var,))))
+		# output("waiting")
+		#operation = "put('message', 'hello')"
+		#operation = "hello"
+
+		#get the current configuration from Olympus
+		output('Client', id, ':requesting configuration from Olympus')
+		send(('GetConfiguration', id), to=olympus)
+		await(some(received(('Configuration', configuration,))))
+
+		#for all operations in this client's workload, send requests to head
+		output('length', len(client_workload))
+		for operation in client_workload:
+			send(('ClientRequest', operation), to=configuration['head'])
+			await(some(received(('ResultShuttle',))))
+			#await(len(listof(tail, received(('ResultShuttle', result_shuttle), from_=tail))) == len(client_workload))
+			# if await(some(received(('ResultShuttle',)))): output('await')
+			# elif timeout(time):
+			# 	output('Client', id, 'retransmitting request to all replicas')
 
 
-	# def send_message_to_head():
- #        head = configuration['head']
-	# 	send(('request',), to='name@host.')
+	def receive(msg=('Configuration', config), from_=olympus):
+		configuration = config
+		output('Client', id, ':received configuration from Olympus')
+
+	# def receive(msg=('Result',result,), from_=tail):
+	# 	output("Client: received message from tail", result)
 
 
+	def receive(msg=('ResultShuttle', result_shuttle), from_=tail):
+		output("received result shuttle", result_shuttle)
 
-def main():
-	argv = sys.argv
+	# def receive(msg=('OlympusHello',operation), from_=olympus):
+	# 	output("Client: In receive handler")
+	# 	output("Client: received message from olympus", operation)
 
-	client = new(Client, num=1)
-	setup(client, (3000,))
-	print("client " + str(client))
+# def main():
+# 	argv = sys.argv
 
-	start(client.pop())
-	#get_workload(client_properties['workload'])
+	#clients = new(Client, num=1)
+	#setup(client, (3000,))
+	#output("client " + str(client))
 
-
-
-
-
-
-# def read_properties():
-# 	config.read_config_file()
-# 	return config.get_client_properties()
+	#start(client.pop())
+	
 
 
-# def pseudorandom(seed, number):
-# 	random.seed(seed)
-# 	operations = [randint(0,3) for index in range(0, number)]
-# 	return operations
-
-
-# def get_workload(workload):
-# 	client_workload = []
-# 	for index in range(0, len(workload)):
-# 		if not workload[index].startswith('pseudorandom'):
-# 			client_workload.append(workload[index])			
-# 		else:
-# 			client_workload.append(workload[index].split(';'))
-# 	print("workload :: ")
-# 	print(client_workload)
