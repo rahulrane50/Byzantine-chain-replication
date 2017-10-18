@@ -1,8 +1,70 @@
-import sys
 from nacl.public import PrivateKey, Box
 
 olympus = import_da('olympus')
 client  = import_da('client')
+
+slot_number = 1
+
+class OrderStatement:
+    def __init__(self, operation):
+        self.operation = operation
+        self.slot = slot_number + 1
+
+
+class OrderProof:
+    def __init__(self, order_statement):
+        self.order_statement = order_statement
+
+
+class Shuttle:
+    def __init__(self, order_proof, sender, receiver, client):
+        self.order_proof = order_proof
+        self.sender = sender
+        self.receiver = receiver
+        self.client = client
+
+    def add_order_proof():
+        pass
+
+def get(param, dictionary):    
+    try:
+        return dictionary[param[0]]
+    except KeyError:
+        return ''
+
+def put(param, dictionary):
+    dictionary[param[0]] = param[1]
+    return (dictionary, 'OK')
+
+def append(param, dictionary):
+    try:
+        value = dictionary[param[0]]
+        dictionary[param[0]] = value + param[1]
+        return (dictionary, 'OK')
+    except KeyError:
+        return (dictionary, 'fail')
+
+def slice(param, dictionary):
+    try:
+        value = dictionary[param[0]]
+        begin_index = int(param[1].split(':')[0].strip())
+        end_index = int(param[1].split(':')[1].strip())
+        if begin_index >= 0 and begin_index <= len(value) - 1 and end_index <= len(value) - 1:
+            dictionary[param[0]] = value[begin_index:end_index]
+            return (dictionary, 'OK')
+        else:
+            return (dictionary, 'fail')
+    except KeyError:
+        return (dictionary, 'fail')
+
+def perform_operation(operation, dictionary):
+    #perform operation
+    method = operation[:operation.find('(')]
+    params = operation[operation.find('(') + 1:operation.find(')')].strip('\'')
+    params = params.split(',')
+
+    globals()[method](params, dictionary)
+
 
 class Replica(process):
     def setup(olympus:olympus.Olympus, config:dict, public_key_map:dict, priv_key:PrivateKey, replica_id:int):
@@ -14,39 +76,45 @@ class Replica(process):
         #output("Replica run: started")
         send(('ReplicasUpNow', replica_id,), to=olympus)
 
-        #keep replica on till TailRequest is received
-        #await(some(received(('TailRequest',msg_var,))) )
         await(False)
 
     def receive(msg=('ClientRequest', operation,), from_=client):
         output("Replica Head: msg received from client :", operation)        
-        #dictionary.operation
-        send(('ForwardRequest', operation, client,), to=config['replica_1'])
+        
+        perform_operation(operation, dictionary)
+        output('State of dictionary at Head:', dictionary)
 
-    # def receive(msg=('OlympusRequest', operation,), from_=olympus):
-    #     output("Replica Head: msg received from olympus :", operation)
-    #     #output("Config in recv :", config)
-    #     send(('ForwardRequest', operation,), to=olympus)
+        order_statement = OrderStatement(operation)        
+        order_proof = OrderProof(order_statement)
+        forward_shuttle = Shuttle(order_proof, 'head', config['replica_1'], client)
+
+        send(('ForwardRequest', forward_shuttle, operation, client,), to=config['replica_1'])
 
 
-    def receive(msg=('ForwardRequest', operation, client,), from_=replica):
-        output("Replica Intermediate: msg received from previous replica :", operation)
+    def receive(msg=('ForwardRequest', forward_shuttle, operation, client,), from_=replica):
+        output("Replica Intermediate: shuttle received from previous replica :", forward_shuttle)
         my_index = int(replica_id.split('_')[1])
+
+        perform_operation(operation, dictionary)
+        output('State of dictionary at', 'replica_' + str(my_index),':', dictionary)
+
         #send to next replica
         if  my_index == len(config) - 3:
-            send(('TailRequest', operation, client,), to=config['tail'])
+            send(('TailRequest', forward_shuttle, operation, client,), to=config['tail'])
         else:
-            send(('ForwardRequest', operation, client,), to=config['replica_' + str(my_index + 1)])
+            send(('ForwardRequest', forward_shuttle, operation, client,), to=config['replica_' + str(my_index + 1)])
 
 
-    def receive(msg=('TailRequest', operation, client,), from_=replica):
-        output("Replica Tail: msg received to tail replica :", operation)
-        output("sending reply to client", client)
+    def receive(msg=('TailRequest', forward_shuttle, operation, client,), from_=replica):
+        output("Replica Tail: shuttle received in tail replica :", forward_shuttle)
+
+        perform_operation(operation, dictionary)
+        output('State of dictionary at Tail:', dictionary)
+
         result = 'r'
         result_shuttle = ('r', 'a')
-        # send(('Result',result), to=client)
         send(('ResultShuttle', result_shuttle), to=client)
-        output("sent reply to client")
+        output("Tail Replica: sent reply to client", client)
 
 def main():
     output("In replica main")

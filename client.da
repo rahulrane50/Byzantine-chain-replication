@@ -28,7 +28,6 @@ def pseudorandom(seed_value, number):
 
 
 def get_workload(workload):
-	#print(workload)
 	client_workload = []
 	for index in range(0, len(workload)):
 		if workload[index].startswith('pseudorandom'):
@@ -36,12 +35,9 @@ def get_workload(workload):
 			args = (function)[function.find('(') + 1:function.find(')')]
 			values = args.split(',')
 
-			# client_workload = pseudorandom(int(values[0].strip()), int(values[1].strip()), client_workload)
 			client_workload.append(pseudorandom(int(values[0].strip()), int(values[1].strip())))
 		else:
-			# client_workload.extend([operation.strip() for operation in workload[index].split(';')])
 			client_workload.append([operation.strip() for operation in workload[index].split(';')])
-	#print('in get_workload', client_workload)
 	return client_workload
 
 
@@ -56,55 +52,29 @@ class Client(process):
 		client_properties = read_properties()
 		self.client_workload = []
 		client_workload = get_workload(client_properties['workload'])[0]
-		output(client_workload)
+		output('Workload being sent from Client', id, ':', client_workload)
+
 
 	def run():
 		output('Client', id, ': running')
-		# output("waiting twice")
-		# #await(some(received(('TailRequest',msg_var,))))
-		# output("waiting")
-		#operation = "put('message', 'hello')"
-		#operation = "hello"
-
+		
 		#get the current configuration from Olympus
 		output('Client', id, ':requesting configuration from Olympus')
 		send(('GetConfiguration', id), to=olympus)
 		await(some(received(('Configuration', configuration,))))
 
 		#for all operations in this client's workload, send requests to head
-		output('length', len(client_workload))
 		for operation in client_workload:
 			send(('ClientRequest', operation), to=configuration['head'])
-			await(some(received(('ResultShuttle',))))
-			#await(len(listof(tail, received(('ResultShuttle', result_shuttle), from_=tail))) == len(client_workload))
-			# if await(some(received(('ResultShuttle',)))): output('await')
-			# elif timeout(time):
-			# 	output('Client', id, 'retransmitting request to all replicas')
+			await(some(received(('ResultShuttle', result_shuttle))))
+			#figure out and add timeout here
 
 
 	def receive(msg=('Configuration', config), from_=olympus):
 		configuration = config
 		output('Client', id, ':received configuration from Olympus')
 
-	# def receive(msg=('Result',result,), from_=tail):
-	# 	output("Client: received message from tail", result)
-
 
 	def receive(msg=('ResultShuttle', result_shuttle), from_=tail):
 		output("received result shuttle", result_shuttle)
-
-	# def receive(msg=('OlympusHello',operation), from_=olympus):
-	# 	output("Client: In receive handler")
-	# 	output("Client: received message from olympus", operation)
-
-# def main():
-# 	argv = sys.argv
-
-	#clients = new(Client, num=1)
-	#setup(client, (3000,))
-	#output("client " + str(client))
-
-	#start(client.pop())
-	
-
 
