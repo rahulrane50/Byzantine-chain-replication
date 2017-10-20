@@ -55,6 +55,10 @@ class Olympus(process):
         output('Sending configuration to client:', client_id)
         send(('Configuration', configuration), to=client)
 
+    def receive(msg=('GetKeys', client_id), from_=client):
+        output('Sending keys to client:', client_id)
+        send(('Keys', public_key_map, priv_key_map['client']), to=client)
+
     def receive(msg=('ForwardRequest', operation,), from_=replica):
         #Broadcast msg to all replicas
         anymsg = "This is Olympus!!"

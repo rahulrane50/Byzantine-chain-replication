@@ -1,80 +1,110 @@
 import sys
 import random
+import nacl.hash
+import nacl.encoding
+import nacl.signing
+from nacl.public import PrivateKey, Box
+
 olympus = import_da('olympus')
 config = import_da('read_config_file')
 
 client_properties = {}
 
 operations_dict = {
-					0: 'put(\'message\', \'hello\')',
-					1: 'get(\'message\')',
-					2: 'slice(\'message\', \'1:5\')',
-					3: 'append(\'message\', \', world\')'
-				}
+                    0: 'put(\'message\', \'hello\')',
+                    1: 'get(\'message\')',
+                    2: 'slice(\'message\', \'1:5\')',
+                    3: 'append(\'message\', \', world\')'
+                }
 
 def read_properties():
-	config.read_config_file()
-	return config.get_client_properties()
+    config.read_config_file()
+    return config.get_client_properties()
 
 
 def pseudorandom(seed_value, number):
-	client_workload = []
-	random.seed(seed_value)
-	operations = [random.randint(0,3) for index in range(0, number)]
+    client_workload = []
+    random.seed(seed_value)
+    operations = [random.randint(0,3) for index in range(0, number)]
 
-	for index in range(0, len(operations)):
-		client_workload.append(operations_dict[operations[index]])
-	return client_workload
+    for index in range(0, len(operations)):
+        client_workload.append(operations_dict[operations[index]])
+    return client_workload
 
 
 def get_workload(workload):
-	client_workload = []
-	for index in range(0, len(workload)):
-		if workload[index].startswith('pseudorandom'):
-			function = workload[index]
-			args = (function)[function.find('(') + 1:function.find(')')]
-			values = args.split(',')
+    client_workload = []
+    for index in range(0, len(workload)):
+        if workload[index].startswith('pseudorandom'):
+            function = workload[index]
+            args = (function)[function.find('(') + 1:function.find(')')]
+            values = args.split(',')
 
-			client_workload.append(pseudorandom(int(values[0].strip()), int(values[1].strip())))
-		else:
-			client_workload.append([operation.strip() for operation in workload[index].split(';')])
-	return client_workload
+            client_workload.append(pseudorandom(int(values[0].strip()), int(values[1].strip())))
+        else:
+            client_workload.append([operation.strip() for operation in workload[index].split(';')])
+    return client_workload
 
+def sign_msg(msg, client_box):
+    binary_msg = msg.encode('ascii')
+
+    signing_key = nacl.signing.SigningKey.generate()
+    signed_msg = signing_key.sign(binary_msg)
+    verify_key = signing_key.verify_key
+    verify_key_hex = verify_key.encode(encoder=nacl.encoding.HexEncoder)
+
+    HASHER = nacl.hash.sha256
+    msg_hash = HASHER(binary_msg, encoder=nacl.encoding.HexEncoder)
+    
+    encrypted_msg = client_box.encrypt(signed_msg)
+    return (encrypted_msg, msg_hash, verify_key_hex)
 
 class Client(process):
-	def setup(time:int, id: int, olympus:olympus.Olympus):
-		output('Client', id, ':setup')
-		self.configuration = {}
+    def setup(time:int, id: int, olympus:olympus.Olympus):
+        output('Client', id, ':setup')
+        self.configuration = {}
+        self.public_key_map = {}
+        self.priv_key = None
 
-		#read workload from config file and get workload for client id
-		#this will happen for every client
-		#read file only once and get from there, later
-		client_properties = read_properties()
-		self.client_workload = []
-		client_workload = get_workload(client_properties['workload'])[0]
-		output('Workload being sent from Client', id, ':', client_workload)
-
-
-	def run():
-		output('Client', id, ': running')
-		
-		#get the current configuration from Olympus
-		output('Client', id, ':requesting configuration from Olympus')
-		send(('GetConfiguration', id), to=olympus)
-		await(some(received(('Configuration', configuration,))))
-
-		#for all operations in this client's workload, send requests to head
-		for operation in client_workload:
-			send(('ClientRequest', operation), to=configuration['head'])
-			await(some(received(('ResultShuttle', result_shuttle))))
-			#figure out and add timeout here
+        #read workload from config file and get workload for client id
+        #this will happen for every client
+        #read file only once and get from there, later
+        client_properties = read_properties()
+        self.client_workload = []
+        client_workload = get_workload(client_properties['workload'])[0]
+        output('Workload being sent from Client', id, ':', client_workload)
 
 
-	def receive(msg=('Configuration', config), from_=olympus):
-		configuration = config
-		output('Client', id, ':received configuration from Olympus')
+    def run():
+        output('Client', id, ': running')
+        
+        #get the current configuration from Olympus
+        output('Client', id, ':requesting configuration from Olympus')
+        send(('GetConfiguration', id), to=olympus)
+        await(some(received(('Configuration', configuration,))))
+
+        send(('GetKeys', id), to=olympus)
+        await(some(received(('Keys', public_key_map, priv_key,))))
+       
+        #for all operations in this client's workload, send requests to head
+        client_box = Box(priv_key, public_key_map['head'])
+        for operation in client_workload:
+            encrypted_msg, msg_hash, verify_key_hex = sign_msg(operation, client_box)
+            send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex), to=configuration['head'])
+            await(some(received(('ResultShuttle', result_shuttle))))
+            #figure out and add timeout here
 
 
-	def receive(msg=('ResultShuttle', result_shuttle), from_=tail):
-		output("received result shuttle", result_shuttle)
+    def receive(msg=('Configuration', config), from_=olympus):
+        configuration = config
+        output('Client', id, ':received configuration from Olympus')
+
+    def receive(msg=('Keys', key_map, key), from_=olympus):
+        public_key_map = key_map
+        priv_key = key
+        output('Client', id, ':received keys from Olympus')
+        #output(public_key_map, priv_key)
+
+    def receive(msg=('ResultShuttle', result_shuttle), from_=tail):
+        output("received result shuttle", result_shuttle)
 
