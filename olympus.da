@@ -1,6 +1,7 @@
 import sys
 import nacl.utils
 from nacl.public import PrivateKey, Box
+config(channel is fifo, clock is lamport)
 replica = import_da('replica')
 client  = import_da('client')
 
@@ -52,7 +53,7 @@ class Olympus(process):
         await(False)
    
     def receive(msg=('GetConfiguration', client_id), from_=client):
-        output('Sending configuration to client:', client_id)
+        output('Olympus: Sending configuration to client:', client_id)
         send(('Configuration', configuration), to=client)
 
     def receive(msg=('ForwardRequest', operation,), from_=replica):

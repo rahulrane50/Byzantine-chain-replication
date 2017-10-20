@@ -1,0 +1,37 @@
+slot_number = 1
+
+class OrderStatement:
+    def __init__(self, type, operation):
+        self.operation = operation                
+
+
+class Proof:
+    statements = set()
+    def __init__(self, statement):
+        #self.statements = set()
+        self.statements.add(statement)
+
+    def add_statement(self, statement):
+        self.statements.add(statement)
+
+
+class ResultStatement():
+    def __init__(self, type, result, hash, operation):
+        self.result = result
+        self.result_hash = hash
+
+
+class Shuttle:
+    def __init__(self, order_proof, sender, receiver, client):
+        self.order_proof = order_proof
+        self.sender = sender
+        self.receiver = receiver
+        self.client = client
+        self.result_proof = ''
+        self.slot_number = slot_number + 1
+
+    def add_result_proof(self, result_proof):
+        self.result_proof = result_proof
+
+    def update_sender(self, sender):
+        self.sender = sender

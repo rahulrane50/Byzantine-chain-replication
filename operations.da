@@ -1,0 +1,43 @@
+def get(param, dictionary):    
+    try:
+        return dictionary[param[0]]
+    except KeyError:
+        return ''
+
+def put(param, dictionary):
+    dictionary[param[0]] = param[1]
+    return (dictionary, 'OK')
+
+def append(param, dictionary):
+    try:
+        value = dictionary[param[0]]
+        dictionary[param[0]] = value + param[1]
+        return (dictionary, 'OK')
+    except KeyError:
+        return (dictionary, 'fail')
+
+def slice(param, dictionary):
+    try:
+        print('in slice')
+        value = dictionary[param[0]]
+        print('value ', value)
+        begin_index = param[1].split(':')[0].strip()
+        begin_index = int(begin_index.strip('\''))
+        end_index = param[1].split(':')[1].strip()
+        end_index = int(end_index.strip('\''))
+        print('indices ', begin_index, end_index)
+        if begin_index >= 0 and begin_index <= len(value) - 1 and end_index <= len(value) - 1:
+            dictionary[param[0]] = value[begin_index:end_index]
+            return (dictionary, 'OK')
+        else:
+            return (dictionary, 'fail')
+    except KeyError:
+        return (dictionary, 'fail')
+
+def perform_operation(operation, dictionary):
+    #perform operation
+    method = operation[:operation.find('(')]
+    params = operation[operation.find('(') + 1:operation.find(')')].strip('\'')
+    params = params.split(',')
+
+    globals()[method](params, dictionary)

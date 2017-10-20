@@ -2,6 +2,7 @@ import sys
 import random
 olympus = import_da('olympus')
 config = import_da('read_config_file')
+config(clock is lamport)
 
 client_properties = {}
 
@@ -45,6 +46,8 @@ class Client(process):
 	def setup(time:int, id: int, olympus:olympus.Olympus):
 		output('Client', id, ':setup')
 		self.configuration = {}
+		self.sequence_number = 1
+		self.results = []
 
 		#read workload from config file and get workload for client id
 		#this will happen for every client
@@ -65,8 +68,12 @@ class Client(process):
 
 		#for all operations in this client's workload, send requests to head
 		for operation in client_workload:
-			send(('ClientRequest', operation), to=configuration['head'])
-			await(some(received(('ResultShuttle', result_shuttle))))
+			clk = logical_clock()
+			send(('ClientRequest', operation, sequence_number, id), to=configuration['head'])
+			sequence_number += 1
+			await(some(received(('Result', result_proof, result,), clk=rclk), has=(rclk > clk)))
+			# await(each(received(('Result', result_proof, result,))))
+			# output(received)
 			#figure out and add timeout here
 
 
@@ -75,6 +82,8 @@ class Client(process):
 		output('Client', id, ':received configuration from Olympus')
 
 
-	def receive(msg=('ResultShuttle', result_shuttle), from_=tail):
-		output("received result shuttle", result_shuttle)
+	def receive(msg=('Result', result_proof, result), from_=tail):
+		output('Client', id,'received result shuttle', result_proof, result)
+		#verify hash
+		results.append(result)
 

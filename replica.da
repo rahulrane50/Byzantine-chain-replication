@@ -1,120 +1,150 @@
 from nacl.public import PrivateKey, Box
+config(clock is lamport)
 
-olympus = import_da('olympus')
-client  = import_da('client')
-
-slot_number = 1
-
-class OrderStatement:
-    def __init__(self, operation):
-        self.operation = operation
-        self.slot = slot_number + 1
-
-
-class OrderProof:
-    def __init__(self, order_statement):
-        self.order_statement = order_statement
-
-
-class Shuttle:
-    def __init__(self, order_proof, sender, receiver, client):
-        self.order_proof = order_proof
-        self.sender = sender
-        self.receiver = receiver
-        self.client = client
-
-    def add_order_proof():
-        pass
-
-def get(param, dictionary):    
-    try:
-        return dictionary[param[0]]
-    except KeyError:
-        return ''
-
-def put(param, dictionary):
-    dictionary[param[0]] = param[1]
-    return (dictionary, 'OK')
-
-def append(param, dictionary):
-    try:
-        value = dictionary[param[0]]
-        dictionary[param[0]] = value + param[1]
-        return (dictionary, 'OK')
-    except KeyError:
-        return (dictionary, 'fail')
-
-def slice(param, dictionary):
-    try:
-        value = dictionary[param[0]]
-        begin_index = int(param[1].split(':')[0].strip())
-        end_index = int(param[1].split(':')[1].strip())
-        if begin_index >= 0 and begin_index <= len(value) - 1 and end_index <= len(value) - 1:
-            dictionary[param[0]] = value[begin_index:end_index]
-            return (dictionary, 'OK')
-        else:
-            return (dictionary, 'fail')
-    except KeyError:
-        return (dictionary, 'fail')
-
-def perform_operation(operation, dictionary):
-    #perform operation
-    method = operation[:operation.find('(')]
-    params = operation[operation.find('(') + 1:operation.find(')')].strip('\'')
-    params = params.split(',')
-
-    globals()[method](params, dictionary)
+olympus    = import_da('olympus')
+client     = import_da('client')
+messages   = import_da('messages')
+operations = import_da('operations')
 
 
 class Replica(process):
+    #setup replica
+    #set the replica id, public and private keys
     def setup(olympus:olympus.Olympus, config:dict, public_key_map:dict, priv_key:PrivateKey, replica_id:int):
-        #output("Replica setup :Config received :", config)
-        print("Replica %s: public_key_map :%s"%(replica_id, public_key_map))
+        output("Replica %s: public_key_map :%s"%(replica_id, public_key_map))
         self.dictionary = {}
+        self.cache = {}
 
+    #start the replica, it is in continuous wait state
     def run():
-        #output("Replica run: started")
-        send(('ReplicasUpNow', replica_id,), to=olympus)
-
+        output('Replica:', replica_id,'started')
         await(False)
 
-    def receive(msg=('ClientRequest', operation,), from_=client):
-        output("Replica Head: msg received from client :", operation)        
+
+    """""""""""""""""""""""""""
+        Methods for shuttles
+    """""""""""""""""""""""""""
+    #add operation at that slot
+    def order_operation(operation, client):
+        order_statement = messages.OrderStatement('order', operation)    # <'order', slot, operation>, slot is incremented in the class
+        order_proof = messages.Proof(order_statement)
+        forward_shuttle = messages.Shuttle(order_proof, 'head', config['replica_1'], client)
+        return forward_shuttle
+
+    #add order statement to order proof contained in the forward shuttle
+    def add_order_statement(forward_shuttle, operation):
+        order_statement = messages.OrderStatement('order', operation)
+        order_proof = forward_shuttle.order_proof
+        order_proof.add_statement(order_statement)
+
+    #create result shuttle, done by the head replica
+    def create_result_proof(result, operation):
+        #TO-DO: calculate hash of result
+        result_statement = messages.ResultStatement('result', result, 'hash', operation)
+        result_proof = messages.Proof(result_statement)
+        return result_proof
+
+    #add result statement to result proof contained in the result shuttle
+    def add_result_statement(shuttle, operation, result, hash):
+        result_statement = messages.ResultStatement('result', result, 'hash', operation)
+        result_proof = shuttle.result_proof
+        result_proof.add_statement(result_statement)
+
+    def cache_result(result_shuttle, result, client, sequence_number, client_id):
+        cache[str(client_id) + '_' + str(sequence_number)] = (result_shuttle, result)
+
+
+    """""""""""""""""""""""""""
+        Receive Handlers
+    """""""""""""""""""""""""""
+    #Head Replica
+    def receive(msg=('ClientRequest', operation, sequence_number, client_id,), from_=client):
+        output("Replica Head: operation received from client :", operation)        
         
-        perform_operation(operation, dictionary)
+        #add operation at the next slot
+        forward_shuttle = order_operation(operation, client)
+        output('Replica:', replica_id, 'orderCommand transition')
+
+        #apply operation to running state and add result proof to forward shuttle
+        result = operations.perform_operation(operation, dictionary)
         output('State of dictionary at Head:', dictionary)
+        result_proof = create_result_proof(result, operation)
+        forward_shuttle.add_result_proof(result_proof)
 
-        order_statement = OrderStatement(operation)        
-        order_proof = OrderProof(order_statement)
-        forward_shuttle = Shuttle(order_proof, 'head', config['replica_1'], client)
-
-        send(('ForwardRequest', forward_shuttle, operation, client,), to=config['replica_1'])
+        #send the forward shuttle, result shuttle to the next replica
+        send(('ForwardRequest', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
 
 
-    def receive(msg=('ForwardRequest', forward_shuttle, operation, client,), from_=replica):
-        output("Replica Intermediate: shuttle received from previous replica :", forward_shuttle)
+    def receive(msg=('ResultShuttle', forward_shuttle, result, sequence_number, client_id,), from_=replica):
+        output('Replica Head:', replica_id, 'result shuttle received from previous replica :', forward_shuttle)
         my_index = int(replica_id.split('_')[1])
 
-        perform_operation(operation, dictionary)
+        #cache result and result shuttle
+        cache_result(forward_shuttle, result, client, sequence_number, client_id)
+
+        #send result shuttle to the previous replica
+        send(('ResultShuttle', forward_shuttle, result, sequence_number, client_id,), to=config['replica_' + str(my_index - 1)])
+
+
+    #Intermediate replicas
+    def receive(msg=('ForwardRequest', forward_shuttle, operation, client, sequence_number, client_id,), from_=replica):
+        output('Replica Intermediate:', replica_id, 'shuttle received from previous replica :', forward_shuttle)
+        my_index = int(replica_id.split('_')[1])
+
+        #TO-DO: check validity of order proof in the shuttle
+        #we are updating the sender on the shuttle because we want to verify it
+
+        #add order statement to the order proof in the shuttle
+        add_order_statement(forward_shuttle, operation)
+        output('Replica:', replica_id, 'orderCommand transition')
+        forward_shuttle.update_sender(config['replica_' + str(my_index)])
+
+        #applying operation to running state and add result statement to the result shuttle
+        result = operations.perform_operation(operation, dictionary)
         output('State of dictionary at', 'replica_' + str(my_index),':', dictionary)
+        add_result_statement(forward_shuttle, operation, result, 'hash')
 
-        #send to next replica
+        #send both shuttles to next replica
         if  my_index == len(config) - 3:
-            send(('TailRequest', forward_shuttle, operation, client,), to=config['tail'])
+            send(('TailRequest', forward_shuttle, operation, client, sequence_number, client_id,), to=config['tail'])
         else:
-            send(('ForwardRequest', forward_shuttle, operation, client,), to=config['replica_' + str(my_index + 1)])
+            send(('ForwardRequest', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_' + str(my_index + 1)])
 
 
-    def receive(msg=('TailRequest', forward_shuttle, operation, client,), from_=replica):
-        output("Replica Tail: shuttle received in tail replica :", forward_shuttle)
+    def receive(msg=('ResultShuttle', forward_shuttle, result, client, sequence_number, client_id,), from_=replica):
+        output('Replica Intermediate:', replica_id, 'result shuttle received from previous replica :', forward_shuttle)
+        my_index = int(replica_id.split('_')[1])
+        
+        #cache result and result shuttle
+        cache_result(forward_shuttle, result, client, sequence_number, client_id)
 
-        perform_operation(operation, dictionary)
+        #send result shuttle to the previous replica
+        send(('ResultShuttle', forward_shuttle, result), to=config['replica_' + str(my_index - 1)])
+
+
+    #Tail Replica
+    def receive(msg=('TailRequest', forward_shuttle, operation, client, sequence_number, client_id,), from_=replica):
+        output('Replica Tail: shuttle received in tail replica :', forward_shuttle)
+
+        #add order statement to the order proof in the shuttle
+        add_order_statement(forward_shuttle, operation)
+        output('Replica:', replica_id, 'orderCommand transition')
+        output('Replica:', replica_id, 'added order statement to shuttle.(', forward_shuttle.slot_number, ', ', operation, ') is persistent')
+
+        #applying operation to running state and add result statement to the result shuttle
+        result = operations.perform_operation(operation, dictionary)
         output('State of dictionary at Tail:', dictionary)
+        add_result_statement(forward_shuttle, operation, result, 'hash')
 
-        result = 'r'
-        result_shuttle = ('r', 'a')
-        send(('ResultShuttle', result_shuttle), to=client)
+        #the order proof is complete, send result to client
+        send(('Result', forward_shuttle.result_proof, result,), to=client)
         output("Tail Replica: sent reply to client", client)
+
+        #cache result and result shuttle
+        cache_result(forward_shuttle, result, client, sequence_number, client_id)
+
+        #send the shuttle in the reverse direction
+        send(('ResultShuttle', forward_shuttle, result, client, sequence_number,  client_id,), to=config['replica_' + str(len(config) - 2)])
 
 def main():
     output("In replica main")
