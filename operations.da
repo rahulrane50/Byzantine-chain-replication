@@ -5,13 +5,13 @@ def get(param, dictionary):
         return ''
 
 def put(param, dictionary):
-    dictionary[param[0]] = param[1]
+    dictionary[param[0].strip().replace('\'','')] = param[1].strip().replace('\'','')
     return (dictionary, 'OK')
 
 def append(param, dictionary):
     try:
         value = dictionary[param[0]]
-        dictionary[param[0]] = value + param[1]
+        dictionary[param[0]] = value + param[1].strip().replace('\'','')
         return (dictionary, 'OK')
     except KeyError:
         return (dictionary, 'fail')
@@ -22,9 +22,9 @@ def slice(param, dictionary):
         value = dictionary[param[0]]
         print('value ', value)
         begin_index = param[1].split(':')[0].strip()
-        begin_index = int(begin_index.strip('\''))
+        begin_index = int(begin_index.replace('\'',''))
         end_index = param[1].split(':')[1].strip()
-        end_index = int(end_index.strip('\''))
+        end_index = int(end_index.replace('\'',''))
         print('indices ', begin_index, end_index)
         if begin_index >= 0 and begin_index <= len(value) - 1 and end_index <= len(value) - 1:
             dictionary[param[0]] = value[begin_index:end_index]

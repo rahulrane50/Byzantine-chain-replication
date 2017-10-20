@@ -1,11 +1,26 @@
 from nacl.public import PrivateKey, Box
+import nacl.encoding
+import nacl.hash
+from nacl.bindings.utils import sodium_memcmp
+import nacl.signing
 config(clock is lamport)
+
 
 olympus    = import_da('olympus')
 client     = import_da('client')
 messages   = import_da('messages')
 operations = import_da('operations')
 
+def verify_msg(encrypted_msg, replica_box, msg_hash, verify_key_hex):
+    verify_key = nacl.signing.VerifyKey(verify_key_hex, encoder=nacl.encoding.HexEncoder)
+
+    recvd_msg = replica_box.decrypt(encrypted_msg)
+    verified_msg = verify_key.verify(recvd_msg)
+
+    HASHER = nacl.hash.sha256
+    orig_hash = HASHER(recvd_msg, encoder=nacl.encoding.HexEncoder)
+    ret = sodium_memcmp(orig_hash, msg_hash)
+    return verified_msg.decode('ascii')
 
 class Replica(process):
     #setup replica
@@ -19,7 +34,6 @@ class Replica(process):
     def run():
         output('Replica:', replica_id,'started')
         await(False)
-
 
     """""""""""""""""""""""""""
         Methods for shuttles
@@ -60,6 +74,13 @@ class Replica(process):
     #Head Replica
     def receive(msg=('ClientRequest', operation, sequence_number, client_id,), from_=client):
         output("Replica Head: operation received from client :", operation)        
+
+    # def receive(msg=('ClientRequest', encrypted_msg, msg_hash, verify_key_hex), from_=client):
+    #     #output("Replica Head: msg received from client :", encrypted_msg)        
+    #     replica_box = Box(priv_key, public_key_map['client'])
+        
+    #     operation = verify_msg(encrypted_msg, replica_box, msg_hash, verify_key_hex)
+    #     output("Decrypted signed operation :", operation)
         
         #add operation at the next slot
         forward_shuttle = order_operation(operation, client)
