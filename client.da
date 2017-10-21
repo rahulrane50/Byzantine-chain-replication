@@ -102,7 +102,6 @@ class Client(process):
         send(('GetSigningKeys', id), to=olympus)
         await(some(received(('SigningKeys', key, key_map))))
 
-        #output("###", signing_key)
 
         #for all operations in this client's workload, send requests to head
         client_box = Box(priv_key, public_key_map['head'])
@@ -114,19 +113,16 @@ class Client(process):
             output('Client: Sequence number', sequence_number)
             #figure out and add timeout here
 
-        await(len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload))
+        if await(len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload)):
+            output('Received message for operation ')            
 
 
     def synchronous_operations():
         for operation in client_workload:
             clk = logical_clock()
-            #encrypted_msg, msg_hash, verify_key_hex = sign_msg(operation, client_box)
-
-            #send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex), to=configuration['head'])
-            #send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex, sequence_number, id), to=configuration['head'])
-
-            #send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex), to=configuration['config_0']['head'])
-            send(('ClientRequest', operation, sequence_number, id), to=configuration['config_0']['head'])
+            signed_operation = sign.sign_msg(signing_key, operation)
+            encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
+            send(('ClientRequest', encrypted_operation, operation_hex, sequence_number, id), to=configuration['config_0']['head'])
 
             sequence_number += 1
 
@@ -134,7 +130,6 @@ class Client(process):
                 output('Client', id, ': received result')
             elif timeout(client_timeout):
                 output('Client', id, ': timed out waiting for result, resending request')
-            #figure out and add timeout here
 
 
     def receive(msg=('Configuration', config), from_=olympus):
@@ -147,9 +142,10 @@ class Client(process):
         #verify hash
         hashed_result = sign.generate_hash(result.encode('ascii'))
         result_statements = result_proof.statements
-        verified = True
-
+        verified = True        
         for statement in result_statements:
+        #TO-DO: add verification of sign on result statement before comparing the hashes
+
             if not sodium_memcmp(hashed_result, statement.result_hash):
                 output('Client ', id, ': The hash of result did not match')
                 verified = False

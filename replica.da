@@ -102,14 +102,16 @@ class Replica(process):
 
     #create result shuttle, done by the head replica
     def create_result_proof(result, operation):
-        hashed_result = sign.generate_hash(result.encode('ascii'))        
+        hashed_result = sign.generate_hash(result.encode('ascii'))
         result_statement = messages.ResultStatement('result', result, hashed_result, operation)
+        #TO-DO: sign result statement before adding to proof
         result_proof = messages.Proof(result_statement)
         return result_proof
 
 
     #add result statement to result proof contained in the result shuttle
     def add_result_statement(shuttle, operation, result, hashed_result):
+        #TO-DO: sign result statement before adding to proof
         result_statement = messages.ResultStatement('result', result, hashed_result, operation)
         result_proof = shuttle.result_proof
         result_proof.add_statement(result_statement)
@@ -181,16 +183,16 @@ class Replica(process):
     def receive(msg=('ForwardRequest', forward_shuttle, operation, client, sequence_number, client_id,), from_=replica):
         output('Replica Intermediate:', replica_id, 'shuttle received from previous replica :', forward_shuttle)
         my_index = int(replica_id.split('_')[1])
-        output('Inside intermediate replica ', my_index)
+
         #Check for failure trigger condition
         failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties,'forwarded_request')
         output("failure_error :", failure_error)
         if failure_error:
             failure_error_dict = handle_failure_error(failure_error)        
 
-        #TO-DO: check validity of order proof in the shuttle
-        #we are updating the sender on the shuttle because we want to verify it
+        #TO-DO: check validity of order proof in the shuttle ## done, verifying from within add_order_statement
 
+        #we are updating the sender on the shuttle because we want to verify it
         #add order statement to the order proof in the shuttle
         add_order_statement(forward_shuttle, operation, my_index)
         output('Replica:', replica_id, 'orderCommand transition')
