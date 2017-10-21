@@ -49,8 +49,9 @@ def handle_failure_error(failure_error):
 class Replica(process):
     #setup replica
     #set the replica id, public and private keys
-    def setup(olympus:olympus.Olympus, config:dict, public_key_map:dict, priv_key:PrivateKey, replica_id:int):
-        output("Replica %s: public_key_map :%s"%(replica_id, public_key_map))
+    def setup(olympus:olympus.Olympus, config:dict, public_key_map:dict, priv_key:PrivateKey,
+    signing_key:cl.signing.SigningKey, verify_key_hex_map:dict, replica_id:int):
+        output("Replica %s: public_key_map :%s verify_key_hex_map :%s"%(replica_id, public_key_map, verify_key_hex_map))
         self.dictionary = {}
         self.cache = {}
         self.failure_scenario_properties = {}

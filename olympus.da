@@ -10,6 +10,12 @@ def generate_pub_priv_keys():
     pub_key = priv_key.public_key
     return (priv_key, pub_key)
 
+def generate_sign_key():
+    signing_key = nacl.signing.SigningKey.generate()
+    verify_key = signing_key.verify_key
+    verify_key_hex = verify_key.encode(encoder=nacl.encoding.HexEncoder)
+    return signing_key, verify_key_hex
+
 class Olympus(process):
     def setup(no_of_configuration:int, no_of_replicas:int, num_of_clients:int, set_of_replicas:set):
         self.configuration = {}
@@ -17,6 +23,8 @@ class Olympus(process):
             self.configuration['config_' + str(id)] = {}
         self.public_key_map = {}
         self.priv_key_map = {}
+        self.signing_key_map = {}
+        self.verify_key_hex_map = {}
 
     def create_keys():
         priv_key, pub_key = generate_pub_priv_keys()
@@ -39,7 +47,19 @@ class Olympus(process):
         priv_key, pub_key = generate_pub_priv_keys()
         public_key_map['client'] = pub_key
         priv_key_map['client'] = priv_key
- 
+
+    def create_signing_keys():
+        signing_key_map['olympus'], verify_key_hex_map['olympus'] = generate_sign_key()
+        signing_key_map['head'], verify_key_hex_map['head'] = generate_sign_key()
+        signing_key_map['tail'], verify_key_hex_map['tail'] = generate_sign_key()
+        
+        for index in range(1, len(configuration['config_0']) - 2):
+            sign_key, verify_key_hex = generate_sign_key()
+            signing_key_map['replica_' + str(index)] = sign_key
+            verify_key_hex_map['replica' + str(index)] = verify_key_hex
+        
+        signing_key_map['client'], verify_key_hex_map['client'] = generate_sign_key()
+
     def run():
 
         
@@ -48,8 +68,11 @@ class Olympus(process):
         
         """Create public and private keys for replicas and client."""
         self.create_keys()
-       
-        setup_and_start_replicas(configuration['config_0'], public_key_map, priv_key_map)
+      
+        self.create_signing_keys()
+
+        setup_and_start_replicas(configuration['config_0'], public_key_map, priv_key_map, signing_key_map,
+        verify_key_hex_map)
 
         #Olympus always stays on
         await(False)
@@ -81,17 +104,19 @@ class Olympus(process):
         return configuration['config_0']        
 
 
-    def setup_and_start_replicas(configuration, public_key_map, priv_key_map):
+    def setup_and_start_replicas(configuration, public_key_map, priv_key_map, signing_key_map, verify_key_hex_map):
         #setup and start head and tail
-        setup(configuration['head'], (self, configuration, public_key_map, priv_key_map['head'], 'head', ))
-        setup(configuration['tail'], (self, configuration, public_key_map, priv_key_map['tail'], 'tail', ))
+        setup(configuration['head'], (self, configuration, public_key_map, priv_key_map['head'],
+        signing_key_map['head'], verify_key_hex_map, 'head', ))
+        setup(configuration['tail'], (self, configuration, public_key_map, priv_key_map['tail'],
+        signing_key_map['tail'], verify_key_hex_map, 'tail', ))
         start(configuration['head'])
         start(configuration['tail'])
 
         #setup and start intermediate replicas
         for index in range(1, len(configuration) - 2):
             setup(configuration['replica_' + str(index)], (self, configuration, public_key_map, priv_key_map['replica_'
-            + str(index)], 'replica_' + str(index)))
+            + str(index)], signing_key_map['replica_' + str(index)], verify_key_hex_map, 'replica_' + str(index)))
             start(configuration['replica_' + str(index)])    
 
 
