@@ -61,7 +61,9 @@ class Replica(process):
     #add operation at that slot
     def order_operation(operation, client):
         order_statement = messages.OrderStatement('order', operation)    # <'order', slot, operation>, slot is incremented in the class
-        order_proof = messages.Proof(order_statement)
+        signed_order_statement = sign.sign_msg(signing_key, pickle.dumps(order_statement))
+        output("head os :", signed_order_statement)
+        order_proof = messages.Proof(signed_order_statement)
         forward_shuttle = messages.Shuttle(order_proof, 'head', config['replica_1'], client)
         output('Replica Head: Added operation', operation, 'at slot', forward_shuttle.slot_number)
         return forward_shuttle
@@ -75,9 +77,11 @@ class Replica(process):
         result = verify_order_proof(forward_shuttle.order_proof, replica_index)
         if result == 'OK':
             order_statement = messages.OrderStatement('order', operation)
-            #signed_order_statement = sign.sign_msg(signing_key, bytes(order_statement))
+            signed_order_statement = sign.sign_msg(signing_key, pickle.dumps(order_statement))
             order_proof = forward_shuttle.order_proof
-            order_proof.add_statement(order_statement)
+            #order_proof.add_statement(order_statement)
+            output("signed os :", signed_order_statement)
+            order_proof.add_statement(signed_order_statement)
         elif result == 'fail':
             #TO-DO: drop this message, and make the system move forward
             output('Invalid order proof detected at replica', replica_id)
@@ -86,14 +90,16 @@ class Replica(process):
         order_statements = order_proof.statements
         index = 0
         output('verified sign===============================', verify_key_hex_map['head'])
-        result = sign.verify_sign(pickle.dumps(order_statements[index]), verify_key_hex_map['head'])
+        output(order_statements)
+        #result = sign.verify_sign(verify_key_hex_map['head'], pickle.loads(order_statements[index]))
+        result = sign.verify_sign(verify_key_hex_map['head'], order_statements[index])
         output('verified sign===============================')
         if result == 'Verification Failed':
             return 'fail'
 
         map_key = 'replica_'
         for index in range(1, replica_index):
-            result = sign.verify_sign(order_statements[index], verify_key_hex_map[map_key + str(index)])
+            result = sign.verify_sign(verify_key_hex_map[map_key + str(index)], order_statements[index])
             if result == 'Verification Failed':
                 return 'fail'
 
@@ -123,16 +129,14 @@ class Replica(process):
         Receive Handlers
     """""""""""""""""""""""""""
     #Head Replica
-    # def receive(msg=('ClientRequest', signed_operation, verify_key_hex, sequence_number, client_id,), from_=client):
-    def receive(msg=('ClientRequest', operation, sequence_number, client_id,), from_=client):
+    def receive(msg=('ClientRequest', encrypted_operation, operation_hex, sequence_number, client_id,), from_=client):
         #output('Replica head: params: ',signed_operation, verify_key_hex, sequence_number, client_id)
         replica_box = Box(priv_key, public_key_map['client'])
-        #operation = sign.verify_msg(encrypted_msg, replica_box, msg_hash, verify_key_hex)
-        
 
         #TO-DO: handle that verification will fail
-        # operation = sign.verify_sign(verify_key_hex, signed_operation)
-        # output("Replica Head: operation received from client :", operation)
+        operation = sign.verify_msg(encrypted_operation, replica_box, operation_hex,
+        verify_key_hex_map['client_'+str(client_id)])
+        output("Replica Head: operation received from client :", operation)
 
         #Check for failure trigger condition
         failure_error = handle_failure_trigger('replica_0', client_id, sequence_number, failure_scenario_properties,'client_request')

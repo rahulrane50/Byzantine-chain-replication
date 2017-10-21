@@ -9,31 +9,33 @@ def generate_hash(msg):
     return hash_val
 
 def sign_msg(signing_key, msg):
-	print('in sign_msg')
-# 	#binary_msg = msg.encode('ascii')
-# 	# signing_key = nacl.signing.SigningKey.generate()
-# 	signed_msg = signing_key.sign(binary_msg)
-# 	#verify_key = signing_key.verify_key
-# 	#verify_key_hex = verify_key.encode(encoder=nacl.encoding.HexEncoder)
-# 	return signed_msg
+    try:
+        binary_msg = msg.encode('ascii')
+    except Exception:
+        binary_msg = msg
+    signed_msg = signing_key.sign(binary_msg)
+    return signed_msg
+
+def encrypt_msg(msg, client_box):
+    msg_hash = generate_hash(msg)
+    encrypted_msg = client_box.encrypt(msg)
+    return (encrypted_msg, msg_hash)
 
 def verify_sign(verify_key_hex, msg):
-	try:
-		print('verify sign===================================')
-		verify_key = nacl.signing.VerifyKey(verify_key_hex, encoder=nacl.encoding.HexEncoder)
-		print('verify sign===================================')
-		verified_msg = verify_key.verify(msg)
-		return verified_msg.decode('ascii')
-	except nacl.exceptions.BadSignatureError:
-		return 'Verification Failed'
+    try:
+        verify_key = nacl.signing.VerifyKey(verify_key_hex, encoder=nacl.encoding.HexEncoder)
+        verified_msg = verify_key.verify(msg)
+        try:
+            return verified_msg.decode('ascii')
+        except UnicodeDecodeError:
+            return verified_msg
+    except nacl.exceptions.BadSignatureError:
+        return 'Verification Failed'
 
 def verify_msg(encrypted_msg, replica_box, msg_hash, verify_key_hex):
-    #verify_key = nacl.signing.VerifyKey(verify_key_hex, encoder=nacl.encoding.HexEncoder)
-
     recvd_msg = replica_box.decrypt(encrypted_msg)
     verified_msg = verify_sign(verify_key_hex, recvd_msg)
-    #verified_msg = verify_key.verify(recvd_msg)
 
-    orig_hash = generate_hash(recvd_msg)
-    ret = sodium_memcmp(orig_hash, msg_hash)
-    return verified_msg.decode('ascii')
+    recvd_msg_hash = generate_hash(recvd_msg)
+    ret = sodium_memcmp(recvd_msg_hash, msg_hash)
+    return verified_msg
