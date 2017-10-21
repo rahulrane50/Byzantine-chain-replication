@@ -71,7 +71,7 @@ class Client(process):
 		self.configuration = {}
 		self.public_key_map = {}
 		self.priv_key = None
-		self.sequence_number = 1
+		self.sequence_number = 0
 		self.results = []
 
 		#read workload from config file and get workload for client id
@@ -94,6 +94,7 @@ class Client(process):
 		send(('GetKeys', id), to=olympus)
 		await(some(received(('Keys', public_key_map, priv_key,))))
 
+
 		#for all operations in this client's workload, send requests to head
 		client_box = Box(priv_key, public_key_map['head'])
 		for operation in client_workload:
@@ -110,8 +111,13 @@ class Client(process):
 		for operation in client_workload:
 			clk = logical_clock()
 			encrypted_msg, msg_hash, verify_key_hex = sign_msg(operation, client_box)
+
 			#send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex), to=configuration['head'])
-			send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex, sequence_number, id), to=configuration['head'])
+			#send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex, sequence_number, id), to=configuration['head'])
+
+			#send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex), to=configuration['config_0']['head'])
+			send(('ClientRequest', operation, sequence_number, id), to=configuration['config_0']['head'])
+
 			sequence_number += 1
 			
 			if await(some(received(('Result', result_proof, result, identifier,), clk=rclk), has=(rclk > clk))):
