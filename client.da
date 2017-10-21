@@ -147,15 +147,19 @@ class Client(process):
         #verify hash
         hashed_result = sign.generate_hash(result.encode('ascii'))
         result_statements = result_proof.statements
+        verified = True
 
         for statement in result_statements:
             if not sodium_memcmp(hashed_result, statement.result_hash):
                 output('Client ', id, ': The hash of result did not match')
+                verified = False
                 retransmit_request(statement.operation)
             else:
-                output('statement', statement.result, statement.result_hash, statement.operation)
+                #output('statement', statement.result, statement.result_hash, statement.operation)
                 results.append(result)
 
+        if verified:
+            output('Client',id, ': Result received and verified for operation,', operation)
 
     def receive(msg=('Keys', key_map, key), from_=olympus):
         public_key_map = key_map

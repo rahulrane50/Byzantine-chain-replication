@@ -15,7 +15,6 @@ def generate_sign_key():
     signing_key = nacl.signing.SigningKey.generate()
     verify_key = signing_key.verify_key
     verify_key_hex = verify_key.encode(encoder=nacl.encoding.HexEncoder)
-    print('keys gen===========================================', verify_key_hex)
     return signing_key, verify_key_hex
 
 class Olympus(process):
@@ -54,11 +53,10 @@ class Olympus(process):
         signing_key_map['olympus'], verify_key_hex_map['olympus'] = generate_sign_key()
         signing_key_map['head'], verify_key_hex_map['head'] = generate_sign_key()
         signing_key_map['tail'], verify_key_hex_map['tail'] = generate_sign_key()
-        output('Olympus keys=================================', verify_key_hex_map['head'])
         for index in range(1, len(configuration['config_0']) - 2):
             sign_key, verify_key_hex = generate_sign_key()
             signing_key_map['replica_' + str(index)] = sign_key
-            verify_key_hex_map['replica' + str(index)] = verify_key_hex
+            verify_key_hex_map['replica_' + str(index)] = verify_key_hex
 
         for index in range(0, num_of_clients):
             signing_key_map['client_' + str(index)], verify_key_hex_map['client_' + str(index)] = generate_sign_key()
