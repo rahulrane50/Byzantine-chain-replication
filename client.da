@@ -15,171 +15,169 @@ config(clock is lamport)
 client_properties = {}
 
 operations_dict = {
-					0: 'put(\'message\', \'hello\')',
-					1: 'get(\'message\')',
-					2: 'slice(\'message\', \'1:5\')',
-					3: 'append(\'message\', \', world\')'
-				}
+                    0: 'put(\'message\', \'hello\')',
+                    1: 'get(\'message\')',
+                    2: 'slice(\'message\', \'1:5\')',
+                    3: 'append(\'message\', \', world\')'
+                }
 
 def read_properties():
-	config_file.read_config_file()
-	return config_file.get_client_properties()
+    config_file.read_config_file()
+    return config_file.get_client_properties()
 
 
 def pseudorandom(seed_value, number):
-	client_workload = []
-	random.seed(seed_value)
-	operations = [random.randint(0,3) for index in range(0, number)]
+    client_workload = []
+    random.seed(seed_value)
+    operations = [random.randint(0,3) for index in range(0, number)]
 
-	for index in range(0, len(operations)):
-		client_workload.append(operations_dict[operations[index]])
-	return client_workload
+    for index in range(0, len(operations)):
+        client_workload.append(operations_dict[operations[index]])
+    return client_workload
 
 
 def get_workload(workload):
-	client_workload = []
-	for index in range(0, len(workload)):
-		if workload[index].startswith('pseudorandom'):
-			function = workload[index]
-			args = (function)[function.find('(') + 1:function.find(')')]
-			values = args.split(',')
+    client_workload = []
+    for index in range(0, len(workload)):
+        if workload[index].startswith('pseudorandom'):
+            function = workload[index]
+            args = (function)[function.find('(') + 1:function.find(')')]
+            values = args.split(',')
 
-			client_workload.append(pseudorandom(int(values[0].strip()), int(values[1].strip())))
-		else:
-			client_workload.append([operation.strip() for operation in workload[index].split(';')])
-	return client_workload
+            client_workload.append(pseudorandom(int(values[0].strip()), int(values[1].strip())))
+        else:
+            client_workload.append([operation.strip() for operation in workload[index].split(';')])
+    return client_workload
 
 
 # def sign_msg(msg, client_box):
-# 	binary_msg = msg.encode('ascii')
+#   binary_msg = msg.encode('ascii')
 
-# 	signed_msg, verify_key = sig
-# 	signing_key = nacl.signing.SigningKey.generate()
-# 	signed_msg = signing_key.sign(binary_msg)
-# 	verify_key = signing_key.verify_key
-# 	verify_key_hex = verify_key.encode(encoder=nacl.encoding.HexEncoder)
+#   signed_msg, verify_key = sig
+#   signing_key = nacl.signing.SigningKey.generate()
+#   signed_msg = signing_key.sign(binary_msg)
+#   verify_key = signing_key.verify_key
+#   verify_key_hex = verify_key.encode(encoder=nacl.encoding.HexEncoder)
 
-# 	HASHER = nacl.hash.sha256
-# 	msg_hash = HASHER(binary_msg, encoder=nacl.encoding.HexEncoder)
-	
-# 	encrypted_msg = client_box.encrypt(signed_msg)
-# 	return (encrypted_msg, msg_hash, verify_key_hex)
+#   HASHER = nacl.hash.sha256
+#   msg_hash = HASHER(binary_msg, encoder=nacl.encoding.HexEncoder)
+    
+#   encrypted_msg = client_box.encrypt(signed_msg)
+#   return (encrypted_msg, msg_hash, verify_key_hex)
 
 
 class Client(process):
-	def setup(client_timeout:int, id: int, olympus:olympus.Olympus):
-		output('Client', id, ': setup')
-		self.configuration = {}
-		self.public_key_map = {}
-		self.priv_key = None
-		self.sequence_number = 0
-		self.results = []
-		self.signing_key_hex_map = {}
-		self.signing_key = None
+    def setup(client_timeout:int, id: int, olympus:olympus.Olympus):
+        output('Client', id, ': setup')
+        self.configuration = {}
+        self.public_key_map = {}
+        self.priv_key = None
+        self.sequence_number = 0
+        self.results = []
+        self.signing_key_hex_map = {}
+        self.signing_key = None
 
 
-		#read workload from config file and get workload for client id
-		#this will happen for every client
-		#read file only once and get from there, later
-		client_properties = read_properties()
-		self.client_workload = []
-		client_workload = get_workload(client_properties['workload'])[0]
-		output('Workload being sent from Client', id, ':', client_workload)
+        #read workload from config file and get workload for client id
+        #this will happen for every client
+        #read file only once and get from there, later
+        client_properties = read_properties()
+        self.client_workload = []
+        client_workload = get_workload(client_properties['workload'])[0]
+        output('Workload being sent from Client', id, ':', client_workload)
 
 
-	def run():
-		output('Client', id, ': running')
-		
-		#get the current configuration from Olympus
-		output('Client', id, ':requesting configuration from Olympus')
-		send(('GetConfiguration', id), to=olympus)
-		await(some(received(('Configuration', configuration,))))
-		output("hii ", configuration)
+    def run():
+        output('Client', id, ': running')
+        
+        #get the current configuration from Olympus
+        output('Client', id, ':requesting configuration from Olympus')
+        send(('GetConfiguration', id), to=olympus)
+        await(some(received(('Configuration', configuration,))))
+        output("hii ", configuration)
 
-		send(('GetKeys', id), to=olympus)
-		await(some(received(('Keys', public_key_map, priv_key,))))
+        send(('GetKeys', id), to=olympus)
+        await(some(received(('Keys', public_key_map, priv_key,))))
 
-		send(('GetSigningKeys', id), to=olympus)
-		await(some(received(('SigningKeys', key, key_map))))
+        send(('GetSigningKeys', id), to=olympus)
+        await(some(received(('SigningKeys', key, key_map))))
 
+        #output("###", signing_key)
 
-		#for all operations in this client's workload, send requests to head
-		client_box = Box(priv_key, public_key_map['head'])
-		for operation in client_workload:
-			#encrypted_msg, msg_hash, verify_key_hex = sign_msg(operation, client_box)
-			# signed_operation = sign.sign_msg(operation.encode('ascii'))
-			signing_key = signing_key
-			signed_operation = sign.sign_msg(signing_key, 'binary_msg')
-			output("####",configuration)
-			send(('ClientRequest', operation, sequence_number, id), to=configuration['config_0']['head'])
-			sequence_number += 1
-			output('Client: Sequence number', sequence_number)
-			#figure out and add timeout here
+        #for all operations in this client's workload, send requests to head
+        client_box = Box(priv_key, public_key_map['head'])
+        for operation in client_workload:
+            signed_operation = sign.sign_msg(signing_key, operation)
+            encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
+            send(('ClientRequest', encrypted_operation, operation_hex, sequence_number, id), to=configuration['config_0']['head'])
+            sequence_number += 1
+            output('Client: Sequence number', sequence_number)
+            #figure out and add timeout here
 
-		await(len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload))
+        await(len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload))
 
 
-	def synchronous_operations():
-		for operation in client_workload:
-			clk = logical_clock()
-			#encrypted_msg, msg_hash, verify_key_hex = sign_msg(operation, client_box)
+    def synchronous_operations():
+        for operation in client_workload:
+            clk = logical_clock()
+            #encrypted_msg, msg_hash, verify_key_hex = sign_msg(operation, client_box)
 
-			#send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex), to=configuration['head'])
-			#send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex, sequence_number, id), to=configuration['head'])
+            #send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex), to=configuration['head'])
+            #send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex, sequence_number, id), to=configuration['head'])
 
-			#send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex), to=configuration['config_0']['head'])
-			send(('ClientRequest', operation, sequence_number, id), to=configuration['config_0']['head'])
+            #send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex), to=configuration['config_0']['head'])
+            send(('ClientRequest', operation, sequence_number, id), to=configuration['config_0']['head'])
 
-			sequence_number += 1
+            sequence_number += 1
 
-			if await(some(received(('Result', result_proof, result, identifier,), clk=rclk), has=(rclk > clk))):
-				output('Client', id, ': received result')
-			elif timeout(client_timeout):
-				output('Client', id, ': timed out waiting for result, resending request')
-			#figure out and add timeout here
-
-
-	def receive(msg=('Configuration', config), from_=olympus):
-		configuration = config
-		output('Client', id, ':received  configuration from Olympus', configuration)
+            if await(some(received(('Result', result_proof, result, identifier,), clk=rclk), has=(rclk > clk))):
+                output('Client', id, ': received result')
+            elif timeout(client_timeout):
+                output('Client', id, ': timed out waiting for result, resending request')
+            #figure out and add timeout here
 
 
-	def receive(msg=('Result', result_proof, result, identifier, operation,), from_=tail):
-		output('Client', id,'received result shuttle', result_proof, result)
-		#verify hash
-		hashed_result = sign.generate_hash(result.encode('ascii'))
-		result_statements = result_proof.statements
-
-		for statement in result_statements:
-			if not sodium_memcmp(hashed_result, statement.result_hash):
-				output('Client ', id, ': The hash of result did not match')
-				retransmit_request(statement.operation)
-			else:
-				output('statement', statement.result, statement.result_hash, statement.operation)
-				results.append(result)
+    def receive(msg=('Configuration', config), from_=olympus):
+        configuration = config
+        output('Client', id, ':received  configuration from Olympus', configuration)
 
 
-	def receive(msg=('Keys', key_map, key), from_=olympus):
-		public_key_map = key_map
-		priv_key = key
-		output('Client', id, ':received keys from Olympus')
+    def receive(msg=('Result', result_proof, result, identifier, operation,), from_=tail):
+        output('Client', id,'received result shuttle', result_proof, result)
+        #verify hash
+        hashed_result = sign.generate_hash(result.encode('ascii'))
+        result_statements = result_proof.statements
 
-	def receive(msg=('SigningKeys', key_map, key), from_=olympus):
-		self.signing_key_hex_map = key_map
-		self.signing_key = key
+        for statement in result_statements:
+            if not sodium_memcmp(hashed_result, statement.result_hash):
+                output('Client ', id, ': The hash of result did not match')
+                retransmit_request(statement.operation)
+            else:
+                output('statement', statement.result, statement.result_hash, statement.operation)
+                results.append(result)
 
-		output('Client', id, ':received signing keys from Olympus')
 
-	def retransmit_request(operation):
-		index = 0
-		client_box = Box(priv_key, public_key_map['head'])
-		#encrypted_msg, msg_hash, verify_key_hex = sign_msg(operation, client_box)
-		send(('ClientRequest', operation, sequence_number, id), to=configuration['config_0']['head'])
+    def receive(msg=('Keys', key_map, key), from_=olympus):
+        public_key_map = key_map
+        priv_key = key
+        output('Client', id, ':received keys from Olympus')
 
-		for index in range(0,len(configuration)):
-			client_box = Box(priv_key, public_key_map['replica_' + str(index)])
-			#encrypted_msg, msg_hash, verify_key_hex = sign_msg(operation, client_box)
-			send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex, sequence_number, id), to=configuration['config_0']['replica_' + str(index)])
-			sequence_number += 1
+    def receive(msg=('SigningKeys', key, key_map), from_=olympus):
+        self.signing_key_hex_map = key_map
+        self.signing_key = key
 
-		await(some(received(('Result', result_proof, result, identifier, operation,))))
+        output('Client', id, ':received signing keys from Olympus')
+
+    def retransmit_request(operation):
+        index = 0
+        client_box = Box(priv_key, public_key_map['head'])
+        #encrypted_msg, msg_hash, verify_key_hex = sign_msg(operation, client_box)
+        send(('ClientRequest', operation, sequence_number, id), to=configuration['config_0']['head'])
+
+        for index in range(0,len(configuration)):
+            client_box = Box(priv_key, public_key_map['replica_' + str(index)])
+            #encrypted_msg, msg_hash, verify_key_hex = sign_msg(operation, client_box)
+            send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex, sequence_number, id), to=configuration['config_0']['replica_' + str(index)])
+            sequence_number += 1
+
+        await(some(received(('Result', result_proof, result, identifier, operation,))))
