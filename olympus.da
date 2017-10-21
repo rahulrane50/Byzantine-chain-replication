@@ -11,8 +11,10 @@ def generate_pub_priv_keys():
     return (priv_key, pub_key)
 
 class Olympus(process):
-    def setup(no_of_replicas:int, num_of_clients:int, set_of_replicas:set):
+    def setup(no_of_configuration:int, no_of_replicas:int, num_of_clients:int, set_of_replicas:set):
         self.configuration = {}
+        for id in range(0, no_of_configuration):
+            self.configuration['config_' + str(id)] = {}
         self.public_key_map = {}
         self.priv_key_map = {}
 
@@ -29,7 +31,7 @@ class Olympus(process):
         public_key_map['tail'] = pub_key
         priv_key_map['tail'] = priv_key
  
-        for index in range(1, len(configuration) - 2):
+        for index in range(1, len(configuration['config_0']) - 2):
             priv_key, pub_key = generate_pub_priv_keys()
             public_key_map['replica_' + str(index)] = pub_key
             priv_key_map['replica_' + str(index)] = priv_key
@@ -42,12 +44,12 @@ class Olympus(process):
 
         
         """Create configuration of replicas, and start them"""
-        configuration = create_replica_config(list(set_of_replicas))
+        configuration['config_0'] = create_replica_config(list(set_of_replicas))
         
         """Create public and private keys for replicas and client."""
         self.create_keys()
        
-        setup_and_start_replicas(configuration, public_key_map, priv_key_map)
+        setup_and_start_replicas(configuration['config_0'], public_key_map, priv_key_map)
 
         #Olympus always stays on
         await(False)
@@ -64,19 +66,19 @@ class Olympus(process):
         #Broadcast msg to all replicas
         anymsg = "This is Olympus!!"
         output("handling forward request msg from replica :", operation)
-        if(replica == configuration['head']):
+        if(replica == configuration['config_0']['head']):
             send(('OlympusRequest', anymsg), to=replica)
 
 
     def create_replica_config(list_of_replicas):
-        configuration['head'] = list_of_replicas[0]
-        configuration['tail'] = list_of_replicas[-1]
+        configuration['config_0']['head'] = list_of_replicas[0]
+        configuration['config_0']['tail'] = list_of_replicas[-1]
 
         index = 1
         for replica_itr in list_of_replicas[1:-1]:
-            configuration['replica_' + str(index)] = replica_itr
+            configuration['config_0']['replica_' + str(index)] = replica_itr
             index += 1
-        return configuration        
+        return configuration['config_0']        
 
 
     def setup_and_start_replicas(configuration, public_key_map, priv_key_map):

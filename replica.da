@@ -10,6 +10,7 @@ olympus    = import_da('olympus')
 client     = import_da('client')
 messages   = import_da('messages')
 operations = import_da('operations')
+read_config_file = import_da('read_config_file')
 
 def verify_msg(encrypted_msg, replica_box, msg_hash, verify_key_hex):
     verify_key = nacl.signing.VerifyKey(verify_key_hex, encoder=nacl.encoding.HexEncoder)
@@ -22,6 +23,29 @@ def verify_msg(encrypted_msg, replica_box, msg_hash, verify_key_hex):
     ret = sodium_memcmp(orig_hash, msg_hash)
     return verified_msg.decode('ascii')
 
+#Note: For phase 2 only one configuration is supported
+def handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties, failure_trigger,
+config_id='config_0'):
+    failure_error = None
+    tuple = str(client_id) + ',' + str(sequence_number)
+    if replica_id in failure_scenario_properties[config_id].keys():
+        for tuples in failure_scenario_properties[config_id][replica_id]:
+            if(tuple == tuples[0] and failure_trigger == tuples[1]):
+                failure_error = tuples[2]
+    return failure_error
+
+def handle_failure_error(failure_error):
+    failure_error_dict = {'operation':None, 'result':False, 'drop_result':False}
+    if 'change_operation' in failure_error:
+        failure_error_dict['operation'] = "get('x')"
+    elif 'change_result' in failure_error:
+        failure_error_dict['result'] = True
+    elif 'drop_result_stmt' in failure_error:
+        failure_error_dict['drop_result'] = True
+    else:
+        print("Unhandled failure error scenario")
+    return failure_error_dict
+    
 class Replica(process):
     #setup replica
     #set the replica id, public and private keys
@@ -29,10 +53,12 @@ class Replica(process):
         output("Replica %s: public_key_map :%s"%(replica_id, public_key_map))
         self.dictionary = {}
         self.cache = {}
+        self.failure_scenario_properties = {}
 
     #start the replica, it is in continuous wait state
     def run():
         output('Replica:', replica_id,'started')
+        failure_scenario_properties = read_config_file.get_failure_scenario_properties() 
         await(False)
 
     """""""""""""""""""""""""""
@@ -82,6 +108,16 @@ class Replica(process):
     #     operation = verify_msg(encrypted_msg, replica_box, msg_hash, verify_key_hex)
     #     output("Decrypted signed operation :", operation)
         
+        #Check for failure trigger condition
+        failure_error = handle_failure_trigger('replica_0', client_id, sequence_number, failure_scenario_properties,'client_request')
+        output("failure_error :", failure_error)
+        if failure_error:
+            failure_error_dict = handle_failure_error(failure_error)
+
+        if failure_error and failure_error_dict['operation']:
+            operation = failure_error_dict['operation']
+            output("Injecting failure change operation on head replica")
+
         #add operation at the next slot
         forward_shuttle = order_operation(operation, client)
         output('Replica:', replica_id, 'orderCommand transition')
@@ -100,6 +136,12 @@ class Replica(process):
         output('Replica Head:', replica_id, 'result shuttle received from previous replica :', forward_shuttle)
         my_index = int(replica_id.split('_')[1])
 
+        #Check for failure trigger condition
+        failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties, 'result_shuttle')
+        output("failure_error :", failure_error)
+        if failure_error:
+            failure_error_dict = handle_failure_error(failure_error)
+
         #cache result and result shuttle
         cache_result(forward_shuttle, result, client, sequence_number, client_id)
 
@@ -111,6 +153,12 @@ class Replica(process):
     def receive(msg=('ForwardRequest', forward_shuttle, operation, client, sequence_number, client_id,), from_=replica):
         output('Replica Intermediate:', replica_id, 'shuttle received from previous replica :', forward_shuttle)
         my_index = int(replica_id.split('_')[1])
+        
+        #Check for failure trigger condition
+        failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties,'forwarded_request')
+        output("failure_error :", failure_error)
+        if failure_error:
+            failure_error_dict = handle_failure_error(failure_error)
 
         #TO-DO: check validity of order proof in the shuttle
         #we are updating the sender on the shuttle because we want to verify it
@@ -146,6 +194,14 @@ class Replica(process):
     #Tail Replica
     def receive(msg=('TailRequest', forward_shuttle, operation, client, sequence_number, client_id,), from_=replica):
         output('Replica Tail: shuttle received in tail replica :', forward_shuttle)
+
+        #Check for failure trigger condition
+        replica_id = 'replica_' + str(len(config) - 1)
+        failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties,'forwarded_request')
+        output("failure_error :", failure_error)
+        if failure_error:
+            failure_error_dict = handle_failure_error(failure_error)
+ 
 
         #add order statement to the order proof in the shuttle
         add_order_statement(forward_shuttle, operation)

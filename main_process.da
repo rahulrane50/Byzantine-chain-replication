@@ -7,7 +7,7 @@ client = import_da('client')
 def main():
 	replicas = new(replica.Replica, num=4)
 
-	olympus_p = new(olympus.Olympus, [4, 1, replicas], num=1)
+	olympus_p = new(olympus.Olympus, [1, 4, 1, replicas], num=1)
 	start(olympus_p)
 
 	num_of_clients = 1
