@@ -1,18 +1,24 @@
 slot_number = 1
 
 class OrderStatement:
-    def __init__(self, type, operation):
-        self.operation = operation                
+    def __init__(self, type, slot, operation):
+        self.operation = operation
+        self.slot = slot               
 
 
 class Proof:
     statements = set()
-    def __init__(self, statement):
+    def __init__(self, statement, slot, operation):
         self.statements = []
         self.statements.append(statement)
+        self.slot = slot
+        self.operation = operation
 
     def add_statement(self, statement):
         self.statements.append(statement)
+
+    def set_replica(replica_id):
+        self.replica = replica_id
 
 
 class ResultStatement():
@@ -23,13 +29,16 @@ class ResultStatement():
 
 
 class Shuttle:
+    #slot = 0
     def __init__(self, order_proof, sender, receiver, client):
         self.order_proof = order_proof
         self.sender = sender
         self.receiver = receiver
         self.client = client
         self.result_proof = ''
-        self.slot_number = slot_number + 1
+        # Shuttle.slot += 1
+        # self.slot_number = slot_number
+
 
     def add_result_proof(self, result_proof):
         self.result_proof = result_proof
