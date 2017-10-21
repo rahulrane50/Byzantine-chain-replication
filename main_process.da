@@ -1,8 +1,9 @@
 import sys
 olympus = import_da('olympus')
 replica = import_da('replica')
-client  = import_da('client')
-config_file  = import_da('read_config_file')
+client = import_da('client')
+config_file = import_da('read_config_file')
+
 
 def main():
     config_file.read_config_file()
@@ -16,12 +17,10 @@ def main():
 
     olympus_p = new(olympus.Olympus, [1, num_replicas, num_clients, replicas], num=1)
     start(olympus_p)
-	
+
     clients = new(client.Client, num=num_clients)
 
     clients_list = list(clients)
     for index in range(0, num_clients):
-    	setup(clients_list[index], (300, index, olympus_p))
-    	start(clients_list[index])
-
-
+        setup(clients_list[index], (300, index, olympus_p))
+        start(clients_list[index])
