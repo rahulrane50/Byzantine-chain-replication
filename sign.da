@@ -8,17 +8,20 @@ def generate_hash(msg):
     hash_val = HASHER(msg, encoder=nacl.encoding.HexEncoder)
     return hash_val
 
-def sign_msg(binary_msg):
-	#binary_msg = msg.encode('ascii')
-	signing_key = nacl.signing.SigningKey.generate()
-	signed_msg = signing_key.sign(binary_msg)
-	verify_key = signing_key.verify_key
-	verify_key_hex = verify_key.encode(encoder=nacl.encoding.HexEncoder)
-	return (signed_msg, verify_key_hex)
+def sign_msg(signing_key, msg):
+	print('in sign_msg')
+# 	#binary_msg = msg.encode('ascii')
+# 	# signing_key = nacl.signing.SigningKey.generate()
+# 	signed_msg = signing_key.sign(binary_msg)
+# 	#verify_key = signing_key.verify_key
+# 	#verify_key_hex = verify_key.encode(encoder=nacl.encoding.HexEncoder)
+# 	return signed_msg
 
 def verify_sign(verify_key_hex, msg):
 	try:
+		print('verify sign===================================')
 		verify_key = nacl.signing.VerifyKey(verify_key_hex, encoder=nacl.encoding.HexEncoder)
+		print('verify sign===================================')
 		verified_msg = verify_key.verify(msg)
 		return verified_msg.decode('ascii')
 	except nacl.exceptions.BadSignatureError:

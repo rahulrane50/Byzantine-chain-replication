@@ -2,6 +2,7 @@ import sys
 import nacl.utils
 from nacl.public import PrivateKey, Box
 config(channel is fifo, clock is lamport)
+
 replica = import_da('replica')
 client  = import_da('client')
 
@@ -14,6 +15,7 @@ def generate_sign_key():
     signing_key = nacl.signing.SigningKey.generate()
     verify_key = signing_key.verify_key
     verify_key_hex = verify_key.encode(encoder=nacl.encoding.HexEncoder)
+    print('keys gen===========================================', verify_key_hex)
     return signing_key, verify_key_hex
 
 class Olympus(process):
@@ -52,17 +54,16 @@ class Olympus(process):
         signing_key_map['olympus'], verify_key_hex_map['olympus'] = generate_sign_key()
         signing_key_map['head'], verify_key_hex_map['head'] = generate_sign_key()
         signing_key_map['tail'], verify_key_hex_map['tail'] = generate_sign_key()
-        
+        output('Olympus keys=================================', verify_key_hex_map['head'])
         for index in range(1, len(configuration['config_0']) - 2):
             sign_key, verify_key_hex = generate_sign_key()
             signing_key_map['replica_' + str(index)] = sign_key
             verify_key_hex_map['replica' + str(index)] = verify_key_hex
-        
-        signing_key_map['client'], verify_key_hex_map['client'] = generate_sign_key()
+
+        for index in range(0, num_of_clients):
+            signing_key_map['client_' + str(index)], verify_key_hex_map['client_' + str(index)] = generate_sign_key()
 
     def run():
-
-        
         """Create configuration of replicas, and start them"""
         configuration['config_0'] = create_replica_config(list(set_of_replicas))
         
@@ -84,6 +85,11 @@ class Olympus(process):
     def receive(msg=('GetKeys', client_id), from_=client):
         output('Sending keys to client:', client_id)
         send(('Keys', public_key_map, priv_key_map['client']), to=client)
+
+    def receive(msg=('GetSigningKeys', client_id), from_=client):
+        output('Sending signing keys to client:', client_id)
+        send(('SigningKeys', signing_key_map['client_' + str(client_id)], verify_key_hex_map), to=client)
+
 
     def receive(msg=('ForwardRequest', operation,), from_=replica):
         #Broadcast msg to all replicas
@@ -120,8 +126,8 @@ class Olympus(process):
             start(configuration['replica_' + str(index)])    
 
 
-def main():
+#def main():
     #Olympus can create all public and private keys for clients and replicas and send them to the relevant processes.
-    olympus = new(Olympus, [4, 1], num=1)
-    start(olympus)
- 
+    
+    # olympus = new(Olympus, [no_of_replicas, num_clients], num=1)
+    # start(olympus)

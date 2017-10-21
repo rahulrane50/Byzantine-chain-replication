@@ -1,21 +1,27 @@
 import sys
 olympus = import_da('olympus')
 replica = import_da('replica')
-client = import_da('client')
-
+client  = import_da('client')
+config_file  = import_da('read_config_file')
 
 def main():
-	replicas = new(replica.Replica, num=4)
+    config_file.read_config_file()
+    properties = config_file.get_olympus_properties()
 
-	olympus_p = new(olympus.Olympus, [1, 4, 1, replicas], num=1)
-	start(olympus_p)
+    t = properties['t']
+    num_clients = properties['num_client']
+    num_replicas = int(t) * 2 + 1
 
-	num_of_clients = 1
-	clients = new(client.Client, num=num_of_clients)
+    replicas = new(replica.Replica, num=num_replicas)
 
-	clients_list = list(clients)
-	for index in range(0, num_of_clients):
-		setup(clients_list[index], (300, index, olympus_p))
-		start(clients_list[index])
+    olympus_p = new(olympus.Olympus, [1, num_replicas, num_clients, replicas], num=1)
+    start(olympus_p)
+	
+    clients = new(client.Client, num=num_clients)
+
+    clients_list = list(clients)
+    for index in range(0, num_clients):
+    	setup(clients_list[index], (300, index, olympus_p))
+    	start(clients_list[index])
 
 

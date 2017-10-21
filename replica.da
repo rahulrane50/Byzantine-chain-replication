@@ -2,6 +2,7 @@ from nacl.public import PrivateKey, Box
 import nacl.encoding
 import nacl.hash
 import nacl.signing
+import pickle
 config(clock is lamport)
 
 
@@ -24,6 +25,7 @@ config_id='config_0'):
                 failure_error = tuples[2]
     return failure_error
 
+
 def handle_failure_error(failure_error):
     failure_error_dict = {'operation':None, 'result':False, 'drop_result':False}
     if 'change_operation' in failure_error:
@@ -36,12 +38,13 @@ def handle_failure_error(failure_error):
         print("Unhandled failure error scenario")
     return failure_error_dict
     
+
 class Replica(process):
     #setup replica
     #set the replica id, public and private keys
     def setup(olympus:olympus.Olympus, config:dict, public_key_map:dict, priv_key:PrivateKey,
     signing_key:cl.signing.SigningKey, verify_key_hex_map:dict, replica_id:int):
-        output("Replica %s: public_key_map :%s verify_key_hex_map :%s"%(replica_id, public_key_map, verify_key_hex_map))
+        #output("Replica %s: public_key_map :%s verify_key_hex_map :%s"%(replica_id, public_key_map, verify_key_hex_map))
         self.dictionary = {}
         self.cache = {}
         self.failure_scenario_properties = {}
@@ -65,14 +68,36 @@ class Replica(process):
 
 
     #add order statement to order proof contained in the forward shuttle
-    def add_order_statement(forward_shuttle, operation):
+    def add_order_statement(forward_shuttle, operation, replica_index):
+        output('Inside add order stmt =====================================')
         #TO-DO: add verification of all signed statements in the order proof
         #if that passes, do this
-        order_statement = messages.OrderStatement('order', operation)
-        signed_order_statement, verify_key_hex = sign.sign_msg(bytes(order_statement))
-        order_proof = forward_shuttle.order_proof
-        order_proof.add_statement(order_statement)
+        result = verify_order_proof(forward_shuttle.order_proof, replica_index)
+        if result == 'OK':
+            order_statement = messages.OrderStatement('order', operation)
+            #signed_order_statement = sign.sign_msg(signing_key, bytes(order_statement))
+            order_proof = forward_shuttle.order_proof
+            order_proof.add_statement(order_statement)
+        elif result == 'fail':
+            #TO-DO: drop this message, and make the system move forward
+            output('Invalid order proof detected at replica', replica_id)
 
+    def verify_order_proof(order_proof, replica_index):
+        order_statements = order_proof.statements
+        index = 0
+        output('verified sign===============================', verify_key_hex_map['head'])
+        result = sign.verify_sign(pickle.dumps(order_statements[index]), verify_key_hex_map['head'])
+        output('verified sign===============================')
+        if result == 'Verification Failed':
+            return 'fail'
+
+        map_key = 'replica_'
+        for index in range(1, replica_index):
+            result = sign.verify_sign(order_statements[index], verify_key_hex_map[map_key + str(index)])
+            if result == 'Verification Failed':
+                return 'fail'
+
+        return 'OK'
 
     #create result shuttle, done by the head replica
     def create_result_proof(result, operation):
@@ -157,18 +182,18 @@ class Replica(process):
     def receive(msg=('ForwardRequest', forward_shuttle, operation, client, sequence_number, client_id,), from_=replica):
         output('Replica Intermediate:', replica_id, 'shuttle received from previous replica :', forward_shuttle)
         my_index = int(replica_id.split('_')[1])
-        
+        output('Inside intermediate replica ', my_index)
         #Check for failure trigger condition
         failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties,'forwarded_request')
         output("failure_error :", failure_error)
         if failure_error:
-            failure_error_dict = handle_failure_error(failure_error)
+            failure_error_dict = handle_failure_error(failure_error)        
 
         #TO-DO: check validity of order proof in the shuttle
         #we are updating the sender on the shuttle because we want to verify it
 
         #add order statement to the order proof in the shuttle
-        add_order_statement(forward_shuttle, operation)
+        add_order_statement(forward_shuttle, operation, my_index)
         output('Replica:', replica_id, 'orderCommand transition')
         forward_shuttle.update_sender(config['replica_' + str(my_index)])
 
