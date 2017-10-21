@@ -89,13 +89,15 @@ class Replica(process):
         index = 0
         
         result = sign.verify_sign(verify_key_hex_map['head'], order_statements[index])
-        if result == 'Verification Failed':
+        #if result == 'Verification Failed':
+        if result == None:
             return 'fail'
 
         map_key = 'replica_'
         for index in range(1, replica_index):
             result = sign.verify_sign(verify_key_hex_map[map_key + str(index)], order_statements[index])
-            if result == 'Verification Failed':
+            #if result == 'Verification Failed':
+            if result == None:
                 return 'fail'
 
         return 'OK'
@@ -104,17 +106,20 @@ class Replica(process):
     def create_result_proof(result, operation):
         hashed_result = sign.generate_hash(result.encode('ascii'))
         result_statement = messages.ResultStatement('result', result, hashed_result, operation)
+        
         #TO-DO: sign result statement before adding to proof
-        result_proof = messages.Proof(result_statement)
-        return result_proof
+        signed_result_statement = sign.sign_msg(signing_key, pickle.dumps(result_statement))
+        result_proof = messages.Proof(signed_result_statement)
+        return result_proof 
 
 
     #add result statement to result proof contained in the result shuttle
     def add_result_statement(shuttle, operation, result, hashed_result):
         #TO-DO: sign result statement before adding to proof
         result_statement = messages.ResultStatement('result', result, hashed_result, operation)
+        signed_result_statement = sign.sign_msg(signing_key, pickle.dumps(result_statement))
         result_proof = shuttle.result_proof
-        result_proof.add_statement(result_statement)
+        result_proof.add_statement(signed_result_statement)
 
 
     #cache result and result shuttle at each replica
