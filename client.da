@@ -3,6 +3,7 @@ import random
 import nacl.hash
 import nacl.encoding
 import nacl.signing
+import pickle
 import copy
 from nacl.bindings.utils import sodium_memcmp
 from nacl.public import PrivateKey, Box
@@ -49,22 +50,20 @@ def get_workload(workload):
             client_workload.append([operation.strip() for operation in workload[index].split(';')])
     return client_workload
 
-
-# def sign_msg(msg, client_box):
-#   binary_msg = msg.encode('ascii')
-
-#   signed_msg, verify_key = sig
-#   signing_key = nacl.signing.SigningKey.generate()
-#   signed_msg = signing_key.sign(binary_msg)
-#   verify_key = signing_key.verify_key
-#   verify_key_hex = verify_key.encode(encoder=nacl.encoding.HexEncoder)
-
-#   HASHER = nacl.hash.sha256
-#   msg_hash = HASHER(binary_msg, encoder=nacl.encoding.HexEncoder)
-    
-#   encrypted_msg = client_box.encrypt(signed_msg)
-#   return (encrypted_msg, msg_hash, verify_key_hex)
-
+def verify_result_statement(verify_key, statement, hashed_result):
+    verified = True
+    result_statement = None
+    verified_result_statement = sign.verify_sign(verify_key, statement)
+    #print("verified_result_statement :", verified_result_statement)
+    if verified_result_statement == None:
+        verified = False
+        return verified, None
+    if verified:
+        result_statement = pickle.loads(verified_result_statement)
+    if not sodium_memcmp(hashed_result, result_statement.result_hash):
+        output('Client ', id, ': The hash of result did not match')
+        verified = False
+    return verified, result_statement
 
 class Client(process):
     def setup(client_timeout:int, id: int, olympus:olympus.Olympus):
@@ -74,7 +73,7 @@ class Client(process):
         self.priv_key = None
         self.sequence_number = 0
         self.results = []
-        self.signing_key_hex_map = {}
+        self.verify_key_hex_map = {}
         self.signing_key = None
 
         #read workload from config file and get workload for client id
@@ -139,19 +138,26 @@ class Client(process):
         hashed_result = sign.generate_hash(result.encode('ascii'))
         result_statements = result_proof.statements
         verified = True        
-        for statement in result_statements:
-        #TO-DO: add verification of sign on result statement before comparing the hashes
-        # if the hash of atleast t + 1 replicas matches, break, don't need to check further
-            if not sodium_memcmp(hashed_result, statement.result_hash):
-                output('Client ', id, ': The hash of result did not match')
-                verified = False
-                retransmit_request(statement.operation)
-            else:
-                #output('statement', statement.result, statement.result_hash, statement.operation)
+        verified, result_statement = verify_result_statement(verify_key_hex_map['head'], result_statements[0], hashed_result)
+        if verified:
+            results.append(result)
+        
+        index = 1
+        for statement in result_statements[1:-1]:
+            verified, result_statement = verify_result_statement(verify_key_hex_map['replica_'+str(index)], statement, hashed_result)
+            if verified:
+                #output("Result statement of replica :",  'replica_' + str(idenx), " is not verified hence retransmitting.")
                 results.append(result)
+                break
+            index += 1
+        verified, result_statement = verify_result_statement(verify_key_hex_map['tail'], result_statements[-1], hashed_result)
+        if verified:
+            results.append(result)
 
         if verified:
             output('Client',id, ': Result received and verified for operation,', operation)
+        else:
+            retransmit_request(result_statement.operation)
 
     def receive(msg=('Keys', key_map, key), from_=olympus):
         public_key_map = key_map
@@ -159,7 +165,7 @@ class Client(process):
         output('Client', id, ':received keys from Olympus')
 
     def receive(msg=('SigningKeys', key, key_map), from_=olympus):
-        self.signing_key_hex_map = key_map
+        self.verify_key_hex_map = key_map
         self.signing_key = key
 
         output('Client', id, ':received signing keys from Olympus')

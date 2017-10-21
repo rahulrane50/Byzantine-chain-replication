@@ -23,15 +23,17 @@ def encrypt_msg(msg, client_box):
 
 def verify_sign(verify_key_hex, msg):
     try:
+        verified_msg = None
         verify_key = nacl.signing.VerifyKey(verify_key_hex, encoder=nacl.encoding.HexEncoder)
         verified_msg = verify_key.verify(msg)
         try:
-            print('verified msg================', verified_msg.decode('ascii'))
-            return verified_msg.decode('ascii')
+            print('verified msg================', verified_msg.decode('ascii'))            
+            verified_msg = verified_msg.decode('ascii')
         except UnicodeDecodeError:
-            return verified_msg
+            pass
     except nacl.exceptions.BadSignatureError:
-        return 'Verification Failed'
+        pass
+    return verified_msg
 
 def verify_msg(encrypted_msg, replica_box, msg_hash, verify_key_hex):
     recvd_msg = replica_box.decrypt(encrypted_msg)
