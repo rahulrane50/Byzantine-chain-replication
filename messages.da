@@ -8,17 +8,18 @@ class OrderStatement:
 class Proof:
     statements = set()
     def __init__(self, statement):
-        #self.statements = set()
-        self.statements.add(statement)
+        self.statements = []
+        self.statements.append(statement)
 
     def add_statement(self, statement):
-        self.statements.add(statement)
+        self.statements.append(statement)
 
 
 class ResultStatement():
     def __init__(self, type, result, hash, operation):
         self.result = result
         self.result_hash = hash
+        self.operation = operation
 
 
 class Shuttle:

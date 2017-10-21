@@ -1,0 +1,36 @@
+import nacl.hash
+import nacl.encoding
+import nacl.signing
+from nacl.bindings.utils import sodium_memcmp
+
+def generate_hash(msg):
+    HASHER = nacl.hash.sha256
+    hash_val = HASHER(msg, encoder=nacl.encoding.HexEncoder)
+    return hash_val
+
+def sign_msg(binary_msg):
+	#binary_msg = msg.encode('ascii')
+	signing_key = nacl.signing.SigningKey.generate()
+	signed_msg = signing_key.sign(binary_msg)
+	verify_key = signing_key.verify_key
+	verify_key_hex = verify_key.encode(encoder=nacl.encoding.HexEncoder)
+	return (signed_msg, verify_key_hex)
+
+def verify_sign(verify_key_hex, msg):
+	try:
+		verify_key = nacl.signing.VerifyKey(verify_key_hex, encoder=nacl.encoding.HexEncoder)
+		verified_msg = verify_key.verify(msg)
+		return verified_msg.decode('ascii')
+	except nacl.exceptions.BadSignatureError:
+		return 'Verification Failed'
+
+def verify_msg(encrypted_msg, replica_box, msg_hash, verify_key_hex):
+    #verify_key = nacl.signing.VerifyKey(verify_key_hex, encoder=nacl.encoding.HexEncoder)
+
+    recvd_msg = replica_box.decrypt(encrypted_msg)
+    verified_msg = verify_sign(verify_key_hex, recvd_msg)
+    #verified_msg = verify_key.verify(recvd_msg)
+
+    orig_hash = generate_hash(recvd_msg)
+    ret = sodium_memcmp(orig_hash, msg_hash)
+    return verified_msg.decode('ascii')

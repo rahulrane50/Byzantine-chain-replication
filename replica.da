@@ -1,7 +1,6 @@
 from nacl.public import PrivateKey, Box
 import nacl.encoding
 import nacl.hash
-from nacl.bindings.utils import sodium_memcmp
 import nacl.signing
 config(clock is lamport)
 
@@ -10,17 +9,8 @@ olympus    = import_da('olympus')
 client     = import_da('client')
 messages   = import_da('messages')
 operations = import_da('operations')
+sign = import_da('sign')
 
-def verify_msg(encrypted_msg, replica_box, msg_hash, verify_key_hex):
-    verify_key = nacl.signing.VerifyKey(verify_key_hex, encoder=nacl.encoding.HexEncoder)
-
-    recvd_msg = replica_box.decrypt(encrypted_msg)
-    verified_msg = verify_key.verify(recvd_msg)
-
-    HASHER = nacl.hash.sha256
-    orig_hash = HASHER(recvd_msg, encoder=nacl.encoding.HexEncoder)
-    ret = sodium_memcmp(orig_hash, msg_hash)
-    return verified_msg.decode('ascii')
 
 class Replica(process):
     #setup replica
@@ -43,27 +33,36 @@ class Replica(process):
         order_statement = messages.OrderStatement('order', operation)    # <'order', slot, operation>, slot is incremented in the class
         order_proof = messages.Proof(order_statement)
         forward_shuttle = messages.Shuttle(order_proof, 'head', config['replica_1'], client)
+        output('Replica Head: Added operation', operation, 'at slot', forward_shuttle.slot_number)
         return forward_shuttle
+
 
     #add order statement to order proof contained in the forward shuttle
     def add_order_statement(forward_shuttle, operation):
+        #TO-DO: add verification of all signed statements in the order proof
+        #if that passes, do this
         order_statement = messages.OrderStatement('order', operation)
+        signed_order_statement, verify_key_hex = sign.sign_msg(bytes(order_statement))
         order_proof = forward_shuttle.order_proof
         order_proof.add_statement(order_statement)
 
+
     #create result shuttle, done by the head replica
     def create_result_proof(result, operation):
-        #TO-DO: calculate hash of result
-        result_statement = messages.ResultStatement('result', result, 'hash', operation)
+        hashed_result = sign.generate_hash(result.encode('ascii'))        
+        result_statement = messages.ResultStatement('result', result, hashed_result, operation)
         result_proof = messages.Proof(result_statement)
         return result_proof
 
+
     #add result statement to result proof contained in the result shuttle
-    def add_result_statement(shuttle, operation, result, hash):
-        result_statement = messages.ResultStatement('result', result, 'hash', operation)
+    def add_result_statement(shuttle, operation, result, hashed_result):
+        result_statement = messages.ResultStatement('result', result, hashed_result, operation)
         result_proof = shuttle.result_proof
         result_proof.add_statement(result_statement)
 
+
+    #cache result and result shuttle at each replica
     def cache_result(result_shuttle, result, client, sequence_number, client_id):
         cache[str(client_id) + '_' + str(sequence_number)] = (result_shuttle, result)
 
@@ -72,16 +71,16 @@ class Replica(process):
         Receive Handlers
     """""""""""""""""""""""""""
     #Head Replica
+    # def receive(msg=('ClientRequest', signed_operation, verify_key_hex, sequence_number, client_id,), from_=client):
     def receive(msg=('ClientRequest', operation, sequence_number, client_id,), from_=client):
-        output("Replica Head: operation received from client :", operation)        
+        #output('Replica head: params: ',signed_operation, verify_key_hex, sequence_number, client_id)
+        replica_box = Box(priv_key, public_key_map['client'])
+        #operation = sign.verify_msg(encrypted_msg, replica_box, msg_hash, verify_key_hex)
+        
+        #TO-DO: handle that verification will fail
+        # operation = sign.verify_sign(verify_key_hex, signed_operation)
+        # output("Replica Head: operation received from client :", operation)
 
-    # def receive(msg=('ClientRequest', encrypted_msg, msg_hash, verify_key_hex), from_=client):
-    #     #output("Replica Head: msg received from client :", encrypted_msg)        
-    #     replica_box = Box(priv_key, public_key_map['client'])
-        
-    #     operation = verify_msg(encrypted_msg, replica_box, msg_hash, verify_key_hex)
-    #     output("Decrypted signed operation :", operation)
-        
         #add operation at the next slot
         forward_shuttle = order_operation(operation, client)
         output('Replica:', replica_id, 'orderCommand transition')
@@ -89,8 +88,11 @@ class Replica(process):
         #apply operation to running state and add result proof to forward shuttle
         result = operations.perform_operation(operation, dictionary)
         output('State of dictionary at Head:', dictionary)
+        output('Result obtained at Head for operation:', operation,'is: ',result)
         result_proof = create_result_proof(result, operation)
         forward_shuttle.add_result_proof(result_proof)
+
+        output('Replica Head: Sequence number', sequence_number)
 
         #send the forward shuttle, result shuttle to the next replica
         send(('ForwardRequest', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
@@ -123,19 +125,19 @@ class Replica(process):
         #applying operation to running state and add result statement to the result shuttle
         result = operations.perform_operation(operation, dictionary)
         output('State of dictionary at', 'replica_' + str(my_index),':', dictionary)
-        add_result_statement(forward_shuttle, operation, result, 'hash')
+        add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')))
 
         #send both shuttles to next replica
         if  my_index == len(config) - 3:
             send(('TailRequest', forward_shuttle, operation, client, sequence_number, client_id,), to=config['tail'])
-        else:
+        else:                                                                                                                                                           
             send(('ForwardRequest', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_' + str(my_index + 1)])
 
 
     def receive(msg=('ResultShuttle', forward_shuttle, result, client, sequence_number, client_id,), from_=replica):
         output('Replica Intermediate:', replica_id, 'result shuttle received from previous replica :', forward_shuttle)
         my_index = int(replica_id.split('_')[1])
-        
+
         #cache result and result shuttle
         cache_result(forward_shuttle, result, client, sequence_number, client_id)
 
@@ -155,17 +157,18 @@ class Replica(process):
         #applying operation to running state and add result statement to the result shuttle
         result = operations.perform_operation(operation, dictionary)
         output('State of dictionary at Tail:', dictionary)
-        add_result_statement(forward_shuttle, operation, result, 'hash')
+        add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')))
 
         #the order proof is complete, send result to client
-        send(('Result', forward_shuttle.result_proof, result,), to=client)
+        send(('Result', forward_shuttle.result_proof, result,str(client_id) + str(sequence_number), operation), to=client)
         output("Tail Replica: sent reply to client", client)
 
         #cache result and result shuttle
         cache_result(forward_shuttle, result, client, sequence_number, client_id)
 
         #send the shuttle in the reverse direction
-        send(('ResultShuttle', forward_shuttle, result, client, sequence_number,  client_id,), to=config['replica_' + str(len(config) - 2)])
+        send(('ResultShuttle', forward_shuttle, result, client, sequence_number, client_id,), to=config['replica_' + str(len(config) - 2)])
+
 
 def main():
     output("In replica main")
