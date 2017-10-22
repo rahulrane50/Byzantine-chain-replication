@@ -7,11 +7,14 @@ config_file = import_da('read_config_file')
 
 def main():
     config_file.read_config_file()
-    properties = config_file.get_olympus_properties()
+    olympus_properties = config_file.get_olympus_properties()
+    client_properties = config_file.get_client_properties()
 
-    t = properties['t']
-    num_clients = properties['num_client']
+    t = olympus_properties['t']
+    num_clients = client_properties['num_client']
     num_replicas = int(t) * 2 + 1
+    client_timeout = client_properties['client_timeout']
+
 
     replicas = new(replica.Replica, num=num_replicas)
 
@@ -22,5 +25,6 @@ def main():
 
     clients_list = list(clients)
     for index in range(0, num_clients):
-        setup(clients_list[index], (2, index, olympus_p))
+        setup(clients_list[index], (client_timeout, index, olympus_p))
+        #setup(clients_list[index], (300, index, olympus_p))        
         start(clients_list[index])

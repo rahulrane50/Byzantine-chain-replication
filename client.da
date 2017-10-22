@@ -5,6 +5,7 @@ import nacl.encoding
 import nacl.signing
 import pickle
 import copy
+import time
 from nacl.bindings.utils import sodium_memcmp
 from nacl.public import PrivateKey, Box
 
@@ -23,6 +24,7 @@ operations_dict = {
                     3: 'append(\'message\', \', world\')'
                 }
 expected_dict = {}
+requests_info = {}
 
 def read_properties():
     config_file.read_config_file()
@@ -88,6 +90,13 @@ def verify_expected_result(id, expected_dict):
     return verified
 
 
+def check_timeout(client_timeout):
+    for key, val in requests_info.items():
+        if((time.time() - val) >= client_timeout):
+            return True
+    return False
+
+
 class Client(process):
     def setup(client_timeout:int, id: int, olympus:olympus.Olympus):
         output('Client', id, ': setup')
@@ -130,15 +139,14 @@ class Client(process):
             signed_operation = sign.sign_msg(signing_key, operation)
             encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
             send(('ClientRequest', encrypted_operation, operation_hex, sequence_number, id), to=configuration['config_0']['head'])
+            requests_info[(id, sequence_number)] = time.time()
             sequence_number += 1
 
             result = operations.perform_operation(operation, expected_dict)
         
-        if await(len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload)):
-            output('Received message for operation ')            
-        elif timeout(client_timeout):
-            output('Client', id, 'timed out')
-
+        #if await(len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload)):
+        if await(check_timeout(client_timeout) or (len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload))):
+            output('Either operation timed out or result received ')
 
         verified = verify_expected_result(id, expected_dict)
         if verified: 

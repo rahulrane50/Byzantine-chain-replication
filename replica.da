@@ -3,6 +3,7 @@ import nacl.encoding
 import nacl.hash
 import nacl.signing
 import pickle
+import time
 from nacl.bindings.utils import sodium_memcmp
 
 config(clock is lamport)
@@ -43,7 +44,6 @@ def handle_failure_error(failure_error):
 def dump_expected_result(dictionary, client_id):
     fname = "testcase_" + str(client_id) + "_result.txt"
     testing_file = open(fname, "wb")
-    #testing_file.write("current dict:")
     pickle.dump(dictionary, testing_file, pickle.HIGHEST_PROTOCOL)
     testing_file.close()
 
@@ -120,9 +120,7 @@ class Replica(process):
     #check slots used by older order proofs
     def check_previous_order_proofs(slot_number, operation):
         verified = True
-        output('############### in check previous order proofs', history)
         for order_proof in history:
-            output('############### in for loop check previous order proofs :', order_proof.slot)
             # slot_number: new slot number, operation: new incoming operation
             # for each order proof in the history of head
             # order proof will have previous slot and operation
@@ -224,9 +222,12 @@ class Replica(process):
         hashed_result = sign.generate_hash(result.encode('ascii'))
         result_statements = result_proof.statements
         verified = True
+
         output('Replica', replica_id, 'Verifying result proof')
-        verifiedt = verify_result_statement(verify_key_hex_map['head'], result_statements[0], hashed_result)
-        
+        verified = verify_result_statement(verify_key_hex_map['head'], result_statements[0], hashed_result)
+        if not verified:
+            return False
+
         index = 1
         for statement in result_statements[1:-1]:
             verified = verify_result_statement(verify_key_hex_map['replica_'+str(index)], statement, hashed_result)
@@ -267,7 +268,7 @@ class Replica(process):
     """""""""""""""""""""""""""
     #Head Replica
     def receive(msg=('ClientRequest', encrypted_operation, operation_hex, sequence_number, client_id,), from_=client):
-        replica_box = Box(priv_key, public_key_map['client'])
+        replica_box = Box(priv_key, public_key_map['client_'+ str(client_id)])
 
         #TO-DO: handle that verification will fail
         #verify that the operation really came from that particular client
@@ -297,6 +298,8 @@ class Replica(process):
         forward_shuttle.add_result_proof(result_proof)
 
         output('Replica Head: Sequence number', sequence_number)
+        
+        #time.sleep(10)
 
         #send the forward shuttle, result shuttle to the next replica
         send(('ForwardRequest', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
@@ -307,6 +310,18 @@ class Replica(process):
         if replica_id != 'head':
             my_index = int(replica_id.split('_')[1])
 
+        #Check for failure trigger condition
+        failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties, 'result_shuttle')
+        output("failure_error :", failure_error)
+        if failure_error:
+            failure_error_dict = handle_failure_error(failure_error)
+            if failure_error_dict['result']:
+                output("Injecting result shuttle failure.")
+                result = "OK"
+            elif failure_error_dict['drop_result']:
+                output("Injecting drop head result statement failure.")
+                result_shuttle.result_proof.statements.pop(0)
+        
         #Validate order proof with previous
         verified = verify_result_proof(result_shuttle.result_proof, result)
         if not verified:
@@ -314,15 +329,6 @@ class Replica(process):
             #retransmit_request()
         else:
             output('Replica', replica_id, 'Result proof validated successfully')
-
-        #Check for failure trigger condition
-        failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties, 'result_shuttle')
-        output("failure_error :", failure_error)
-        if failure_error:
-            failure_error_dict = handle_failure_error(failure_error)
-
-        #TO-DO: add validation of sign on each statement in result shuttle,
-        #and verify that result of every replica is equal to this replica
 
         #cache result and result shuttle
         cache_result(result_shuttle, result, client, sequence_number, client_id)
@@ -412,7 +418,7 @@ class Replica(process):
         if mode == 'IMMUTABLE':
             output('Replica', replica_id, 'is Immutable. Sending error statement to client')
 
-        replica_box = Box(priv_key, public_key_map['client'])
+        replica_box = Box(priv_key, public_key_map['client_' + str(client_id)])
         
         operation = sign.verify_msg(encrypted_operation, replica_box, operation_hex, verify_key_hex_map['client_'+ str(client_id)])
         output('Replica', replica_id,': retransmit request received from client for operation:', operation.encode('ascii'), 'sequence number:', sequence_number)
