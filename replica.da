@@ -75,6 +75,7 @@ class Replica(process):
         self.slot_number = 0
         self.history = []
         self.inprogress_operations = {}
+        self.count = 0
 
     #start the replica, it is in continuous wait state
     def run():
@@ -112,7 +113,7 @@ class Replica(process):
         for order_proof in history:
             if order_proof.slot == slot_number or order_proof.slot > slot_number:
                 verified = False
-                output('Replica', replica_id, 'detected invalid slot and operation')
+                output('Replica', replica_id, 'detected invalid slot and operation for operation in previous order proof:', operation)
                 break
             else:
                 verify_signed_order_statements(order_proof, replica_index, slot_number, operation)
@@ -287,21 +288,22 @@ class Replica(process):
             operation = failure_error_dict['operation']
             output("Injecting failure change operation on head replica")
         
-        #add operation at the next slot
-        forward_shuttle = order_operation(operation, client)
-        output('Replica:', replica_id, 'orderCommand transition')
+        # #add operation at the next slot
+        # forward_shuttle = order_operation(operation, client)
+        # output('Replica:', replica_id, 'orderCommand transition')
 
-        #apply operation to running state and add result proof to forward shuttle
-        result = operations.perform_operation(operation, dictionary)
-        output('State of dictionary at Head:', dictionary)
-        output('Result obtained at Head for operation:', operation,'is: ',result)
-        result_proof = create_result_proof(result, slot_number, operation)
-        forward_shuttle.add_result_proof(result_proof)
+        # #apply operation to running state and add result proof to forward shuttle
+        # result = operations.perform_operation(operation, dictionary)
+        # output('State of dictionary at Head:', dictionary)
+        # output('Result obtained at Head for operation:', operation,'is: ',result)
+        # result_proof = create_result_proof(result, slot_number, operation)
+        # forward_shuttle.add_result_proof(result_proof)
 
-        output('Replica Head: Sequence number', sequence_number)
+        # output('Replica Head: Sequence number', sequence_number)
 
-        #send the forward shuttle, result shuttle to the next replica
-        send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
+        # #send the forward shuttle, result shuttle to the next replica
+        # send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
+        start_new_operation(operation, client, client_id, sequence_number)
 
 
     def receive(msg=('ResultShuttle', result_shuttle, result, sequence_number, client_id,), from_=replica):
@@ -408,8 +410,8 @@ class Replica(process):
         output('Replica', replica_id, ': cached result:', cache)
 
         #send the shuttle in the reverse direction
-        send(('ResultShuttle', forward_shuttle, result, sequence_number, client_id,), to=config['replica_' +
-        str(len(config) - 2)])
+        # send(('ResultShuttle', forward_shuttle, result, sequence_number, client_id,), to=config['replica_' +
+        # str(len(config) - 2)])
         output('Replica', replica_id ,': Sent result shuttle to', 'replica_' + str(len(config) - 2))
 
 
@@ -421,8 +423,6 @@ class Replica(process):
         
         operation = sign.verify_msg(encrypted_operation, replica_box, operation_hex, verify_key_hex_map['client_'+ str(client_id)])
         output('Replica', replica_id,': retransmit request received from client for operation:', operation.encode('ascii'), 'sequence number:', sequence_number)
-        output('original emcrypted operation', encrypted_operation)
-        output("operation :", operation)
         output('Replica', replica_id, ': and cache is', cache)
         result = cache.get(str(client_id) + '_' + str(sequence_number))
 
@@ -431,44 +431,83 @@ class Replica(process):
             output('Replica', replica_id, ': sending result for retransmitted request with sequence number', sequence_number)
             send(('RetransmitResult', result_proof, result[1], str(client_id) + '_' + str(sequence_number) + '_' + 'resent', operation), to=client)
         elif result == None and not replica_id == 'head':
-            output('Replica', replica_id, 'did not find result cached. Forwarding request to head')
+            output('Replica', replica_id, 'did not find result cached. Forwarding request to head..')
             send(('ForwardRequest', operation, sequence_number, client_id, client, replica_id), to=config['head'])
             inprogress_operations[(client_id, sequence_number, operation)]  = time.time()
             #poll timeout here
-            check_timeout(nonhead_timeout)
+            #check_timeout(nonhead_timeout)
+            if await(not result == None):
+                send(('RetransmitResult', result_proof, result[1], str(client_id) + '_' + str(sequence_number) + '_' + 'resent', operation), to=client)
+                found = True                            
+                break
+            elif timeout(head_timeout):
+                output('Replica', replica_id,'timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..')
 
 
     #handler for requests retransmitted requests forwarded from other replicas to head
     def receive(msg=('ForwardRequest', operation, sequence_number, client_id, client, replica_id), from_=replica):
         output('Replica head received forwarded retransmitted request from Replica', replica_id)
         result = cache.get(str(client_id) + '_' + str(sequence_number))
-
+        timed_out = False
+        found = False
         if not result == None:
             result_proof = result[0].result_proof
             output('Replica', replica_id, ': sending result for retransmitted request with sequence number', sequence_number)
             send(('RetransmitResult', result_proof, result[1], str(client_id) + '_' + str(sequence_number) + '_' + 'resent', operation), to=client)
         else:
-            output('in else trying to decrypt')
-            #output('forwarded emcrypted operation', encrypted_operation)
-            #replica_box = Box(priv_key, public_key_map['client_' + str(client_id)])
-            #output('after making box') 
-            #operation = sign.verify_msg(encrypted_operation, replica_box, operation_hex, verify_key_hex_map['client_'+ str(client_id)])
-            #output("Decrypted op :", operation)
-            #check if this operation has already been ordered
             for order_proof in history:
-                output('inside order proof loop ##')
-                if order_proof.operation == operation:
-                    output('Replica head: started', operation, 'at', order_proof.slot, '. Waiting for result. Starting timer..')
+                if order_proof.operation == operation and not count > 0:
+                    output('Replica head: previously started', operation, 'at', order_proof.slot, '. Waiting for result. Starting timer on request from replica', replica_id)
                     inprogress_operations[(client_id, sequence_number, operation)]  = time.time()
+                    count +=1
                     #poll timeout here
-                    check_timeout(head_timeout)
-                    break
+                    if await(not result == None):
+                        send(('RetransmitResult', result_proof, result[1], str(client_id) + '_' + str(sequence_number) + '_' + 'resent', operation), to=client)
+                        found = True
+                        break
+                    elif timeout(head_timeout):
+                        output('Replica head timed out waiting for the result shuttle in retransmission. Sending reconfig request..')
+
+                    # while(result == None):
+                    #     timed_out = check_timeout(head_timeout)
+                    #     if(timed_out)
+                    #         break
+                    #     time.sleep(10)
+                    #     result = cache.get(str(client_id) + '_' + str(sequence_number))
+                elif count > 0:
+                    output('Replica head: Already started timer for this retransmission request, ignoring the request from replica', replica_id)
+            if not found:
             #else start the operation from scratch
-                #send(('ClientRequest', operation, operation_hex, sequence_number, id), to=config[replica_id])
+                #add operation at the next slot
+                output('starting new operation', operation, 'on request from replica', replica_id)
+                start_new_operation(operation, client, client_id, sequence_number)
 
 
-    def check_timeout(timeout):
-        for key, val in inprogress_operations.items():
-            if((time.time() - val) >= timeout):
-                return True
-        return False
+    # def check_timeout(timeout):
+    #     for key, val in inprogress_operations.items():
+    #         if((time.time() - val) >= timeout):
+    #             return True
+    #     return False
+
+    # def poll():
+    #     pass
+
+    # def stop_poll():
+    #     pass
+
+    def start_new_operation(operation, client, client_id, sequence_number):
+        #add operation at the next slot
+        forward_shuttle = order_operation(operation, client)
+        output('Replica:', replica_id, 'orderCommand transition')
+
+        #apply operation to running state and add result proof to forward shuttle
+        result = operations.perform_operation(operation, dictionary)
+        output('State of dictionary at Head:', dictionary)
+        output('Result obtained at Head for operation:', operation,'is: ',result)
+        result_proof = create_result_proof(result, slot_number, operation)
+        forward_shuttle.add_result_proof(result_proof)
+
+        output('Replica Head: Sequence number', sequence_number)
+
+        #send the forward shuttle, result shuttle to the next replica
+        send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
