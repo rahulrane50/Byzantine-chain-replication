@@ -3,6 +3,7 @@ import nacl.encoding
 import nacl.hash
 import nacl.signing
 import pickle
+import time
 from nacl.bindings.utils import sodium_memcmp
 
 config(clock is lamport)
@@ -303,6 +304,8 @@ class Replica(process):
         forward_shuttle.add_result_proof(result_proof)
 
         output('Replica Head: Sequence number', sequence_number)
+        
+        time.sleep(10)
 
         #send the forward shuttle, result shuttle to the next replica
         send(('ForwardRequest', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
