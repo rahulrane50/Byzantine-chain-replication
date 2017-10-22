@@ -43,7 +43,6 @@ def handle_failure_error(failure_error):
 def dump_expected_result(dictionary, client_id):
     fname = "testcase_" + str(client_id) + "_result.txt"
     testing_file = open(fname, "wb")
-    #testing_file.write("current dict:")
     pickle.dump(dictionary, testing_file, pickle.HIGHEST_PROTOCOL)
     testing_file.close()
 
@@ -130,8 +129,10 @@ class Replica(process):
         result_statements = result_proof.statements
         verified = True
         output("verifying order proof for replica :", replica_id)
-        verifiedt = verify_result_statement(verify_key_hex_map['head'], result_statements[0], hashed_result)
-        
+        verified = verify_result_statement(verify_key_hex_map['head'], result_statements[0], hashed_result)
+        if not verified:
+            return False
+
         index = 1
         for statement in result_statements[1:-1]:
             verified = verify_result_statement(verify_key_hex_map['replica_'+str(index)], statement, hashed_result)
@@ -211,6 +212,18 @@ class Replica(process):
         if replica_id != 'head':
             my_index = int(replica_id.split('_')[1])
 
+        #Check for failure trigger condition
+        failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties, 'result_shuttle')
+        output("failure_error :", failure_error)
+        if failure_error:
+            failure_error_dict = handle_failure_error(failure_error)
+            if failure_error_dict['result']:
+                output("Injecting result shuttle failure.")
+                result = "OK"
+            elif failure_error_dict['drop_result']:
+                output("Injecting drop head result statement failure.")
+                result_shuttle.result_proof.statements.pop(0)
+        
         #Validate order proof with previous
         verified = verify_result_proof(result_shuttle.result_proof, result)
         if not verified:
@@ -219,12 +232,7 @@ class Replica(process):
         else:
             output("Result proof is validated successfully.")
 
-        #Check for failure trigger condition
-        failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties, 'result_shuttle')
-        output("failure_error :", failure_error)
-        if failure_error:
-            failure_error_dict = handle_failure_error(failure_error)
-
+        
         #cache result and result shuttle
         cache_result(result_shuttle, result, client, sequence_number, client_id)
 
