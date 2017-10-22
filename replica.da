@@ -121,9 +121,7 @@ class Replica(process):
     #check slots used by older order proofs
     def check_previous_order_proofs(slot_number, operation):
         verified = True
-        output('############### in check previous order proofs', history)
         for order_proof in history:
-            output('############### in for loop check previous order proofs :', order_proof.slot)
             # slot_number: new slot number, operation: new incoming operation
             # for each order proof in the history of head
             # order proof will have previous slot and operation
@@ -150,7 +148,6 @@ class Replica(process):
                     output('Replica', replica_id, 'detected invalid slot and operation')
                     verified = False
                     break
-                output("############### verified")
         return verified
 
 
@@ -161,7 +158,6 @@ class Replica(process):
                 output('Replica', replica_id, 'detected invalid slot and operation')
                 verified = False
                 break
-        output('returning from check_prev #####')
         return verified
 
 
@@ -243,7 +239,6 @@ class Replica(process):
 
     #create result shuttle, done by the head replica
     def create_result_proof(result, slot, operation):
-        output('################inside create result proof')
         hashed_result = sign.generate_hash(result.encode('ascii'))
         result_statement = messages.ResultStatement('result', result, hashed_result, operation)
         output('inside create result proof', result_statement, hashed_result)
@@ -273,7 +268,7 @@ class Replica(process):
     """""""""""""""""""""""""""
     #Head Replica
     def receive(msg=('ClientRequest', encrypted_operation, operation_hex, sequence_number, client_id,), from_=client):
-        replica_box = Box(priv_key, public_key_map['client'])
+        replica_box = Box(priv_key, public_key_map['client_'+ str(client_id)])
 
         #TO-DO: handle that verification will fail
         #verify that the operation really came from that particular client
@@ -300,7 +295,6 @@ class Replica(process):
         output('State of dictionary at Head:', dictionary)
         output('Result obtained at Head for operation:', operation,'is: ',result)
         result_proof = create_result_proof(result, slot_number, operation)
-        output('forward shuttle ####', forward_shuttle)
         forward_shuttle.add_result_proof(result_proof)
 
         output('Replica Head: Sequence number', sequence_number)

@@ -45,10 +45,13 @@ class Olympus(process):
             public_key_map['replica_' + str(index)] = pub_key
             priv_key_map['replica_' + str(index)] = priv_key
  
-        priv_key, pub_key = generate_pub_priv_keys()
-        public_key_map['client'] = pub_key
-        priv_key_map['client'] = priv_key
-
+        for index in range(0, num_of_clients):
+            priv_key, pub_key = generate_pub_priv_keys()
+            public_key_map['client_' + str(index)] = pub_key
+            priv_key_map['client_' + str(index)] = priv_key
+        #output("public key map :", public_key_map)
+        #output("priv key map :", priv_key_map)
+        
     def create_signing_keys():
         signing_key_map['olympus'], verify_key_hex_map['olympus'] = generate_sign_key()
         signing_key_map['head'], verify_key_hex_map['head'] = generate_sign_key()
@@ -60,6 +63,8 @@ class Olympus(process):
 
         for index in range(0, num_of_clients):
             signing_key_map['client_' + str(index)], verify_key_hex_map['client_' + str(index)] = generate_sign_key()
+        #output("signing key map :", signing_key_map)
+        #output("verifying key hex map :", verify_key_hex_map)
 
     def run():
         """Create configuration of replicas, and start them"""
@@ -82,7 +87,7 @@ class Olympus(process):
 
     def receive(msg=('GetKeys', client_id), from_=client):
         output('Sending keys to client:', client_id)
-        send(('Keys', public_key_map, priv_key_map['client']), to=client)
+        send(('Keys', public_key_map, priv_key_map['client_'+ str(client_id)]), to=client)
 
     def receive(msg=('GetSigningKeys', client_id), from_=client):
         output('Sending signing keys to client:', client_id)

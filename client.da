@@ -84,11 +84,8 @@ def verify_expected_result(id, expected_dict):
             break
     return verified
 
-#client_timeout = 10
 def check_timeout(client_timeout):
-    print("RR:######### checking for timeout :", time.time())
     for key, val in requests_info.items():
-        print("## :", (time.time() - val))
         if((time.time() - val) >= client_timeout):
             return True
     return False
@@ -141,7 +138,7 @@ class Client(process):
         
         #if await(len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload)):
         if await(check_timeout(client_timeout) or (len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload))):
-            output('######### Received message for operation ')            
+            output('Either operation timed out or result received ')            
 
         verified = verify_expected_result(id, expected_dict)
         if verified: 
