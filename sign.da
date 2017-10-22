@@ -27,7 +27,6 @@ def verify_sign(verify_key_hex, msg):
         verify_key = nacl.signing.VerifyKey(verify_key_hex, encoder=nacl.encoding.HexEncoder)
         verified_msg = verify_key.verify(msg)
         try:
-            print('verified msg================', verified_msg.decode('ascii'))            
             verified_msg = verified_msg.decode('ascii')
         except UnicodeDecodeError:
             pass
