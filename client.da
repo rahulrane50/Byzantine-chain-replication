@@ -93,8 +93,9 @@ def verify_expected_result(id, expected_dict):
 def check_timeout(client_timeout):
     for key, val in requests_info.items():
         if((time.time() - val) >= client_timeout):
-            return True
-    return False
+            requests_info[key] = time.time()
+            return True, key[1]
+    return False, None
 
 
 class Client(process):
@@ -150,14 +151,28 @@ class Client(process):
             for operation in client_workload:
                 signed_operation = sign.sign_msg(signing_key, operation)
                 encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
-                send(('ClientRequest', encrypted_operation, operation_hex, sequence_number, id), to=configuration['config_0']['head'])
+                retransmit_req = False
+                retransmit=val.get("retransmit_request")
+                if retransmit:
+                    if id == retransmit[0] and sequence_number == retransmit[1]:
+                        retransmit_req = True    
+                send(('ClientRequest', encrypted_operation, operation_hex, sequence_number, id, retransmit_req,), to=configuration['config_0']['head'])
                 requests_info[(id, sequence_number)] = time.time()
                 sequence_number += 1
                 if perform_op:
                     result = operations.perform_operation(operation, expected_dict)
             
-            if await(check_timeout(client_timeout) or (len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload))):
-                output('Either operation timed out or result received ')            
+            if await(check_timeout(client_timeout)[0] or (len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload))):
+                timed_out, seqno = check_timeout(client_timeout)
+                if timed_out:
+                    output("Operation having seqno ",seqno, " timed out hence retransmitting")
+                    retransmit_request(operation, seqno)
+                else:
+                    output('result received')
+            elif timeout(client_timeout):
+                output('Client', id, ': timed out waiting for result, resending request')
+                retransmit_request(operation, seqno)
+ 
 
             verified = verify_expected_result(id, expected_dict)
             if verified: 
@@ -212,8 +227,6 @@ class Client(process):
         else:
             output("Result statement of replica :",  'replica_' + str(index), " is not verified hence retransmitting.")
             retransmit_request(result_statement.operation, identifier.split('_')[1])
-        output('#### Retransmitting request')
-        retransmit_request(result_statement.operation, identifier.split('_')[1])
 
 
     def receive(msg=('RetransmitResult', result_proof, result, identifier, operation,), from_=tail):
@@ -244,8 +257,6 @@ class Client(process):
         else:
             output("Result statement of replica :",  'replica_' + str(index), " is not verified hence retransmitting.")
             retransmit_request(result_statement.operation, identifier.split('_')[1])
-        # output('#### Retransmitting request')
-        #retransmit_request(result_statement.operation, identifier.split('_')[1])
 
 
     def receive(msg=('Keys', key_map, key), from_=olympus):
