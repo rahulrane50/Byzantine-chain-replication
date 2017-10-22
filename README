@@ -1,0 +1,40 @@
+PLATFORM:
+    Testing : Json file created for providing testdata and used python json loader module.
+    DistAlgo version : 1.0.9 source code compiled and installed.
+    Python version: 3.5.0 source code compiled and installed.
+    Operating system: CentOS release 6.3 (Final)
+    Host: VM running on Oracle VM virtual box on laptop
+
+INSTRUCTIONS:
+    A main process is a entry point for whole system which automatically reads config.txt to get configuration and testing.json to
+    read input testdata. This can be run as :
+    python -m da -f -F output --logfilename ~/logfile.log --message-buffer-size 16384 -m main_process
+
+WORKLOAD GENERATION:
+    
+
+BUGS AND LIMITAIONS:
+    None.
+
+CONTRIBUTIONS:
+    rrane:  Implemented public and private key generation using pynacl library.
+            Signing and verification of messages is implemented using pynacl library.
+            Added handling for failure injection.
+            Added verification for result statements.
+            Testing framework for getting input testdata implemented using simple python json module.
+    
+    rpohankar:
+
+MAIN FILES:
+    main process : main_process.da
+    client : client.da
+    olympus : olympus.da
+    replica : replica.da
+
+CODE SIZE:
+    LOC: algorithm - approx 650 
+         other - approx 300
+         total - approx 950
+
+LANGUAGE FEATURE USAGE:
+    
