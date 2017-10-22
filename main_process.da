@@ -22,5 +22,5 @@ def main():
 
     clients_list = list(clients)
     for index in range(0, num_clients):
-        setup(clients_list[index], (300, index, olympus_p))
+        setup(clients_list[index], (2, index, olympus_p))
         start(clients_list[index])

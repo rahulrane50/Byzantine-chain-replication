@@ -90,7 +90,6 @@ class Replica(process):
         forward_shuttle = None
         slot_number = slot_number + 1
         verified = check_history(history, slot_number, operation, replica_id)
-        #verified = check_previous_order_proofs(slot_number, operation)
         if not verified:
             output('Replica Head: detected invalid slot and operation in previous order proofs. Aborting..')
             #TO-DO: make the system move forward still
@@ -150,7 +149,6 @@ class Replica(process):
                     output('Replica', replica_id, 'detected invalid slot and operation')
                     verified = False
                     break
-                output("############### verified")
         return verified
 
 
@@ -161,7 +159,6 @@ class Replica(process):
                 output('Replica', replica_id, 'detected invalid slot and operation')
                 verified = False
                 break
-        output('returning from check_prev #####')
         return verified
 
 
@@ -200,7 +197,6 @@ class Replica(process):
         if not replica_index == 'head' and not replica_index == 'tail':
             map_key = 'replica_'
             for index in range(1, replica_index):
-                print('### index', index)
                 result = sign.verify_sign(verify_key_hex_map[map_key + str(index)], order_statements[index])
 
                 if result == None:
@@ -228,7 +224,7 @@ class Replica(process):
         hashed_result = sign.generate_hash(result.encode('ascii'))
         result_statements = result_proof.statements
         verified = True
-        output("verifying order proof for replica :", replica_id)
+        output('Replica', replica_id, 'Verifying result proof')
         verifiedt = verify_result_statement(verify_key_hex_map['head'], result_statements[0], hashed_result)
         
         index = 1
@@ -240,14 +236,13 @@ class Replica(process):
         verified = verify_result_statement(verify_key_hex_map['tail'], result_statements[-1], hashed_result)
         return verified
 
+
     #create result shuttle, done by the head replica
     def create_result_proof(result, slot, operation):
-        output('################inside create result proof')
         hashed_result = sign.generate_hash(result.encode('ascii'))
         result_statement = messages.ResultStatement('result', result, hashed_result, operation)
-        output('inside create result proof', result_statement, hashed_result)
-        #TO-DO: sign result statement before adding to proof
 
+        #TO-DO: sign result statement before adding to proof
         signed_result_statement = sign.sign_msg(signing_key, pickle.dumps(result_statement))
         result_proof = messages.Proof(signed_result_statement, slot, operation)
         return result_proof
@@ -299,7 +294,6 @@ class Replica(process):
         output('State of dictionary at Head:', dictionary)
         output('Result obtained at Head for operation:', operation,'is: ',result)
         result_proof = create_result_proof(result, slot_number, operation)
-        output('forward shuttle ####', forward_shuttle)
         forward_shuttle.add_result_proof(result_proof)
 
         output('Replica Head: Sequence number', sequence_number)
@@ -316,10 +310,10 @@ class Replica(process):
         #Validate order proof with previous
         verified = verify_result_proof(result_shuttle.result_proof, result)
         if not verified:
-            output("Result proof received is invalid")
+            output('Replica', replica_id, 'Result proof received is invalid')
             #retransmit_request()
         else:
-            output("Result proof is validated successfully.")
+            output('Replica', replica_id, 'Result proof validated successfully')
 
         #Check for failure trigger condition
         failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties, 'result_shuttle')
@@ -332,14 +326,17 @@ class Replica(process):
 
         #cache result and result shuttle
         cache_result(result_shuttle, result, client, sequence_number, client_id)
+        output('Replica', replica_id, ': cached result', cache)
 
         #send result shuttle to the previous replica
         if replica_id == 'head':
             return
         elif (replica_id == 'replica_1'):
             send(('ResultShuttle', result_shuttle, result, sequence_number, client_id,), to=config['head'])
+            output('Replica', replica_id ,': Sent result shuttle to head')
         else:
             send(('ResultShuttle', result_shuttle, result, sequence_number, client_id,), to=config['replica_' + str(my_index - 1)])
+            output('Replica', replica_id ,': Sent result shuttle to', 'replica_' + str(len(config) - 2))
 
 
     #Intermediate replicas
@@ -371,12 +368,12 @@ class Replica(process):
         else:                                                                                                                                                           
             send(('ForwardRequest', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_' + str(my_index + 1)])
 
+
     #Tail Replica
     def receive(msg=('TailRequest', forward_shuttle, operation, client, sequence_number, client_id,), from_=replica):
         output('Replica Tail: shuttle received in tail replica :', forward_shuttle)
 
         #Check for failure trigger condition
-        output("## replica_id :", replica_id)
         tmp_replica_id = 'replica_' + str(len(config) - 1)
         failure_error = handle_failure_trigger(tmp_replica_id, client_id, sequence_number, failure_scenario_properties,'forwarded_request')
         output("failure_error :", failure_error)
@@ -397,18 +394,38 @@ class Replica(process):
         add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')))
 
         #the order proof is complete, send result to client
-        send(('Result', forward_shuttle.result_proof, result,str(client_id) + str(sequence_number), operation), to=client)
+        send(('Result', forward_shuttle.result_proof, result, str(client_id) + '_' + str(sequence_number), operation), to=client)
         output("Tail Replica: sent reply to client", client)
         dump_expected_result(dictionary, client_id)
 
         #cache result and result shuttle
         cache_result(forward_shuttle, result, client, sequence_number, client_id)
+        output('Replica', replica_id, ': cached result:', cache)
 
         #send the shuttle in the reverse direction
         send(('ResultShuttle', forward_shuttle, result, sequence_number, client_id,), to=config['replica_' +
         str(len(config) - 2)])
-        output("Sent result shuttle")
+        output('Replica', replica_id ,': Sent result shuttle to', 'replica_' + str(len(config) - 2))
 
 
-def main():
-    output("In replica main")
+    def receive(msg=('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, client_id), from_=client):
+        if mode == 'IMMUTABLE':
+            output('Replica', replica_id, 'is Immutable. Sending error statement to client')
+
+        replica_box = Box(priv_key, public_key_map['client'])
+        
+        operation = sign.verify_msg(encrypted_operation, replica_box, operation_hex, verify_key_hex_map['client_'+ str(client_id)])
+        output('Replica', replica_id,': retransmit request received from client for operation:', operation.encode('ascii'), 'sequence number:', sequence_number)
+        
+        output('Replica', replica_id, ': and cache is', cache)
+        result = cache.get(str(client_id) + '_' + str(sequence_number))
+
+        if not result == None:
+            result_proof = result[0].result_proof
+            output('Replica', replica_id, ': sending result for retransmitted request with sequence number', sequence_number)
+            send(('RetransmitResult', result_proof, result[1], str(client_id) + '_' + str(sequence_number) + '_' + 'resent', operation), to=client)
+        elif result == None:
+            send(('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, id, client), to=config['head'])
+
+
+    #def receive(msg=('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, client_id, client), from_=replica):

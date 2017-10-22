@@ -52,6 +52,7 @@ def get_workload(workload):
             client_workload.append([operation.strip() for operation in workload[index].split(';')])
     return client_workload
 
+
 def verify_result_statement(verify_key, statement, hashed_result):
     verified = True
     result_statement = None
@@ -67,6 +68,7 @@ def verify_result_statement(verify_key, statement, hashed_result):
         verified = False
     return verified, result_statement
 
+
 def verify_expected_result(id, expected_dict):
     verified = True
     fname = "testcase_" + str(id) + "_result.txt"
@@ -76,12 +78,16 @@ def verify_expected_result(id, expected_dict):
         verified = False
     
     for key, val in actual_dict.items():
-        if expected_dict[key] != val:
-            print("Actual result [%s] not matching with expected result [%s]"%(val, expected_dict[key]))
-            verified = False
-            break
+        try:
+            if expected_dict[key] != val:
+                print("Actual result [%s] not matching with expected result [%s]"%(val, expected_dict[key]))
+                verified = False
+                break
+        except KeyError:
+            print('The key', key, 'was not found in the dictionary')
     return verified
-    
+
+
 class Client(process):
     def setup(client_timeout:int, id: int, olympus:olympus.Olympus):
         output('Client', id, ': setup')
@@ -92,14 +98,15 @@ class Client(process):
         self.results = []
         self.verify_key_hex_map = {}
         self.signing_key = None
-
+        self.sent = {}
         #read workload from config file and get workload for client id
         #this will happen for every client
         #read file only once and get from there, later
         client_properties = read_properties()
         self.client_workload = []
-        client_workload = get_workload(client_properties['workload'])[0]
+        client_workload = get_workload(client_properties['workload'])[id]
         output('Workload being sent from Client', id, ':', client_workload)
+
 
     def run():
         output('Client', id, ': running')
@@ -129,6 +136,9 @@ class Client(process):
         
         if await(len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload)):
             output('Received message for operation ')            
+        elif timeout(client_timeout):
+            output('Client', id, 'timed out')
+
 
         verified = verify_expected_result(id, expected_dict)
         if verified: 
@@ -143,7 +153,6 @@ class Client(process):
             signed_operation = sign.sign_msg(signing_key, operation)
             encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
             send(('ClientRequest', encrypted_operation, operation_hex, sequence_number, id), to=configuration['config_0']['head'])
-
             sequence_number += 1
 
             if await(some(received(('Result', result_proof, result, identifier,), clk=rclk), has=(rclk > clk))):
@@ -155,10 +164,12 @@ class Client(process):
     def receive(msg=('Configuration', config), from_=olympus):
         configuration = config
         output('Client', id, ':received  configuration from Olympus', configuration)
-
+    
 
     def receive(msg=('Result', result_proof, result, identifier, operation,), from_=tail):
         output('Client', id,'received result shuttle', result_proof, result)
+        if len(identifier.split('_')) == 3 and identifier.split('_')[2] == 'resent':
+            output('Client', id,'received result for restransmitted request', identifier.split('_')[1])
         #verify hash
         hashed_result = sign.generate_hash(result.encode('ascii'))
         result_statements = result_proof.statements
@@ -171,7 +182,6 @@ class Client(process):
         for statement in result_statements[1:-1]:
             verified, result_statement = verify_result_statement(verify_key_hex_map['replica_'+str(index)], statement, hashed_result)
             if verified:
-                #output("Result statement of replica :",  'replica_' + str(idenx), " is not verified hence retransmitting.")
                 results.append(result)
                 break
             index += 1
@@ -180,14 +190,51 @@ class Client(process):
             results.append(result)
 
         if verified:
-            output('Client',id, ': Result received and verified for operation,', operation)
+            output('Client',id, ': Result:', result, 'received and verified for operation,', operation)
         else:
-            retransmit_request(result_statement.operation)
+            output("Result statement of replica :",  'replica_' + str(index), " is not verified hence retransmitting.")
+            retransmit_request(result_statement.operation, identifier.split('_')[1])
+        output('#### Retransmitting request')
+        retransmit_request(result_statement.operation, identifier.split('_')[1])
+
+
+    def receive(msg=('RetransmitResult', result_proof, result, identifier, operation,), from_=tail):
+        output('Client', id,'received result shuttle', result_proof, result)
+        if len(identifier.split('_')) == 3 and identifier.split('_')[2] == 'resent':
+            output('Client', id,'received result for restransmitted request', identifier.split('_')[1])
+        #verify hash
+        hashed_result = sign.generate_hash(result.encode('ascii'))
+        result_statements = result_proof.statements
+        verified = True        
+        verified, result_statement = verify_result_statement(verify_key_hex_map['head'], result_statements[0], hashed_result)
+        if verified:
+            results.append(result)
+        
+        index = 1
+        for statement in result_statements[1:-1]:
+            verified, result_statement = verify_result_statement(verify_key_hex_map['replica_'+str(index)], statement, hashed_result)
+            if verified:
+                results.append(result)
+                break
+            index += 1
+        verified, result_statement = verify_result_statement(verify_key_hex_map['tail'], result_statements[-1], hashed_result)
+        if verified:
+            results.append(result)
+
+        if verified:
+            output('Client',id, ': Result:', result, 'received and verified for operation,', operation)
+        else:
+            output("Result statement of replica :",  'replica_' + str(index), " is not verified hence retransmitting.")
+            retransmit_request(result_statement.operation, identifier.split('_')[1])
+        # output('#### Retransmitting request')
+        #retransmit_request(result_statement.operation, identifier.split('_')[1])
+
 
     def receive(msg=('Keys', key_map, key), from_=olympus):
         public_key_map = key_map
         priv_key = key
         output('Client', id, ':received keys from Olympus')
+
 
     def receive(msg=('SigningKeys', key, key_map), from_=olympus):
         self.verify_key_hex_map = key_map
@@ -195,16 +242,31 @@ class Client(process):
 
         output('Client', id, ':received signing keys from Olympus')
 
-    def retransmit_request(operation):
+
+    def retransmit_request(operation, sequence_number):
         index = 0
+        received_result = False
         client_box = Box(priv_key, public_key_map['head'])
-        #encrypted_msg, msg_hash, verify_key_hex = sign_msg(operation, client_box)
-        send(('ClientRequest', operation, sequence_number, id), to=configuration['config_0']['head'])
+        signed_operation = sign.sign_msg(signing_key, operation)
+        encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
+        send(('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, id), to=configuration['config_0']['head'])
 
-        for index in range(0,len(configuration)):
+        for index in range(1, len(configuration['config_0']) - 1):
             client_box = Box(priv_key, public_key_map['replica_' + str(index)])
-            #encrypted_msg, msg_hash, verify_key_hex = sign_msg(operation, client_box)
-            send(('ClientRequest', encrypted_msg, msg_hash, verify_key_hex, sequence_number, id), to=configuration['config_0']['replica_' + str(index)])
-            sequence_number += 1
+            encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)          
+            send(('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, id), to=configuration['config_0']['replica_' + str(index)])
+            #sequence_number += 1
 
-        await(some(received(('Result', result_proof, result, identifier, operation,))))
+        client_box = Box(priv_key, public_key_map['tail'])
+        signed_operation = sign.sign_msg(signing_key, operation)
+        encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
+        send(('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, id), to=configuration['config_0']['tail'])
+
+        clk = logical_clock()
+        #if await((received(('Result', result_proof, result, identifier, operation,)))):
+        # if await(some(received(('RetransmitResult', result_proof, result, identifier, operation,), clk=rclk), has=(rclk > clk))):
+        if await(some(received(('RetransmitResult', result_proof, result, identifier, operation,)), has=(identifier == str(id) + '_' + str(sequence_number) + '_' + 'resent'))):
+            output('Client', id, ': Result:', result, 'received and verified for retransmitted operation,', operation)
+            received_result = True
+        elif timeout(client_timeout):
+            output('Client', id, ': timed out waiting for result of retransmitted opertion, resending request')
