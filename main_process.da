@@ -11,6 +11,9 @@ def main():
     client_properties = config_file.get_client_properties()
 
     t = olympus_properties['t']
+    head_timeout = olympus_properties['head_timeout']
+    nonhead_timeout = olympus_properties['nonhead_timeout']
+
     num_clients = client_properties['num_client']
     num_replicas = int(t) * 2 + 1
     client_timeout = client_properties['client_timeout']
@@ -18,7 +21,7 @@ def main():
 
     replicas = new(replica.Replica, num=num_replicas)
 
-    olympus_p = new(olympus.Olympus, [1, num_replicas, num_clients, replicas], num=1)
+    olympus_p = new(olympus.Olympus, [1, num_replicas, num_clients, replicas, head_timeout, nonhead_timeout], num=1)
     start(olympus_p)
 
     clients = new(client.Client, num=num_clients)

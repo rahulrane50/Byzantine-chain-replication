@@ -13,6 +13,8 @@ class Proof:
         self.statements.append(statement)
         self.slot = slot
         self.operation = operation
+        # self.sequence_number = sequence_number
+        # self.client_id = client_id
 
     def add_statement(self, statement):
         self.statements.append(statement)

@@ -18,7 +18,7 @@ def generate_sign_key():
     return signing_key, verify_key_hex
 
 class Olympus(process):
-    def setup(no_of_configuration:int, no_of_replicas:int, num_of_clients:int, set_of_replicas:set):
+    def setup(no_of_configuration:int, no_of_replicas:int, num_of_clients:int, set_of_replicas:set, head_timeout:int, nonhead_timeout:int):
         self.configuration = {}
         for id in range(0, no_of_configuration):
             self.configuration['config_' + str(id)] = {}
@@ -76,7 +76,7 @@ class Olympus(process):
         self.create_signing_keys()
 
         setup_and_start_replicas(configuration['config_0'], public_key_map, priv_key_map, signing_key_map,
-        verify_key_hex_map)
+        verify_key_hex_map, head_timeout, nonhead_timeout)
 
         #Olympus always stays on
         await(False)
@@ -113,19 +113,19 @@ class Olympus(process):
         return configuration['config_0']        
 
 
-    def setup_and_start_replicas(configuration, public_key_map, priv_key_map, signing_key_map, verify_key_hex_map):
+    def setup_and_start_replicas(configuration, public_key_map, priv_key_map, signing_key_map, verify_key_hex_map, head_timeout, nonhead_timeout):
         #setup and start head and tail
         setup(configuration['head'], (self, configuration, public_key_map, priv_key_map['head'],
-        signing_key_map['head'], verify_key_hex_map, 'head', 'ACTIVE'))
+        signing_key_map['head'], verify_key_hex_map, 'head', 'ACTIVE', head_timeout, nonhead_timeout))
         setup(configuration['tail'], (self, configuration, public_key_map, priv_key_map['tail'],
-        signing_key_map['tail'], verify_key_hex_map, 'tail', 'ACTIVE'))
+        signing_key_map['tail'], verify_key_hex_map, 'tail', 'ACTIVE', head_timeout, nonhead_timeout))
         start(configuration['head'])
         start(configuration['tail'])
 
         #setup and start intermediate replicas
         for index in range(1, len(configuration) - 1):
             setup(configuration['replica_' + str(index)], (self, configuration, public_key_map, priv_key_map['replica_'
-            + str(index)], signing_key_map['replica_' + str(index)], verify_key_hex_map, 'replica_' + str(index), 'ACTIVE'))
+            + str(index)], signing_key_map['replica_' + str(index)], verify_key_hex_map, 'replica_' + str(index), 'ACTIVE', head_timeout, nonhead_timeout))
             start(configuration['replica_' + str(index)])    
 
 
