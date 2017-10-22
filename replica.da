@@ -302,7 +302,7 @@ class Replica(process):
 
         # #send the forward shuttle, result shuttle to the next replica
         # send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
-        start_new_operation(operation, client, client_id, sequence_number)
+        forward_shuttle = start_new_operation(operation, client, client_id, sequence_number)
 
 
         #send the forward shuttle, result shuttle to the next replica
@@ -485,21 +485,10 @@ class Replica(process):
             #else start the operation from scratch
                 #add operation at the next slot
                 output('starting new operation', operation, 'on request from replica', replica_id)
-                start_new_operation(operation, client, client_id, sequence_number)
+                forward_shuttle = start_new_operation(operation, client, client_id, sequence_number)
                 #send the forward shuttle, result shuttle to the next replica
                 send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
 
-    # def check_timeout(timeout):
-    #     for key, val in inprogress_operations.items():
-    #         if((time.time() - val) >= timeout):
-    #             return True
-    #     return False
-
-    # def poll():
-    #     pass
-
-    # def stop_poll():
-    #     pass
 
     def start_new_operation(operation, client, client_id, sequence_number):
         #add operation at the next slot
@@ -514,6 +503,4 @@ class Replica(process):
         forward_shuttle.add_result_proof(result_proof)
 
         output('Replica Head: Sequence number', sequence_number)
-
-        # #send the forward shuttle, result shuttle to the next replica
-        # send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
+        return forward_shuttle
