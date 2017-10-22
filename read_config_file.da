@@ -4,6 +4,7 @@ olympus_properties = {}
 replica_properties = {}
 failures_scenario_properties = {}
 
+import json
 
 def read_config_file():
     with open('config.txt', 'r') as f:
@@ -48,7 +49,6 @@ def separate_properties():
                 failure_error = failure[-1].replace(" ", "")
                 failures_scenario_properties['config_' + config_id]['replica_'+replica_id].append([tuple, failure_trigger, failure_error])
 
-
 def get_client_properties():
     return client_properties
 
@@ -71,15 +71,19 @@ failure_scenario_properties :
                          },
 }
 '''
-
-
 def get_failure_scenario_properties():
     return failures_scenario_properties
 
+def get_testing_file():
+    with open('testing.json') as data_file:    
+        data = json.load(data_file)
+    return data
+
 read_config_file()
 separate_properties()
+get_testing_file()
 
 #print("config :: " + str(config) + "\n\n")
-#print("client properties :: " + str(get_client_properties()) + "\n\n")
+print("client properties :: " + str(get_client_properties()) + "\n\n")
 #print("olympus properties :: " + str(get_olympus_properties()) + "\n\n")
 #print("failure scenario properties :: " + str(get_failure_scenario_properties()) + "\n\n")

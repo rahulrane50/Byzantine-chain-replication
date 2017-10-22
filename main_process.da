@@ -7,6 +7,7 @@ config_file = import_da('read_config_file')
 
 def main():
     config_file.read_config_file()
+    testing_scenatios = config_file.get_testing_file()
     olympus_properties = config_file.get_olympus_properties()
     client_properties = config_file.get_client_properties()
 

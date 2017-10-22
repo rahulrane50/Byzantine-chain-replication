@@ -156,7 +156,7 @@ class Replica(process):
         verified = True
         for statement in unsigned_order_statements:            
             if not (statement.slot == slot and statement.operation == operation):
-                output('Replica', replica_id, 'detected invalid slot and operation')
+                output('Replica', replica_id, 'detected invalid slot and operation while checking prev order statements for ',  slot, operation)
                 verified = False
                 break
         return verified
@@ -269,7 +269,7 @@ class Replica(process):
         Receive Handlers
     """""""""""""""""""""""""""
     #Head Replica
-    def receive(msg=('ClientRequest', encrypted_operation, operation_hex, sequence_number, client_id,), from_=client):
+    def receive(msg=('ClientRequest', encrypted_operation, operation_hex, sequence_number, client_id,retransmit_req, ), from_=client):
         replica_box = Box(priv_key, public_key_map['client_'+ str(client_id)])
 
         #TO-DO: handle that verification will fail
@@ -277,7 +277,6 @@ class Replica(process):
         operation = sign.verify_msg(encrypted_operation, replica_box, operation_hex,
         verify_key_hex_map['client_'+str(client_id)])
         output("Replica Head: operation received from client :", operation)
-
         #Check for failure trigger condition
         failure_error = handle_failure_trigger('replica_0', client_id, sequence_number, failure_scenario_properties,'client_request')
         output("failure_error :", failure_error)
@@ -304,6 +303,13 @@ class Replica(process):
         # #send the forward shuttle, result shuttle to the next replica
         # send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
         start_new_operation(operation, client, client_id, sequence_number)
+
+
+        #send the forward shuttle, result shuttle to the next replica
+        if not retransmit_req:
+            send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
+        else:
+            output("Retransmit failure injected hence not sending forward shuttle.")
 
 
     def receive(msg=('ResultShuttle', result_shuttle, result, sequence_number, client_id,), from_=replica):
@@ -414,7 +420,6 @@ class Replica(process):
         # str(len(config) - 2)])
         output('Replica', replica_id ,': Sent result shuttle to', 'replica_' + str(len(config) - 2))
 
-
     def receive(msg=('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, client_id), from_=client):
         if mode == 'IMMUTABLE':
             output('Replica', replica_id, 'is Immutable. Sending error statement to client')
@@ -481,7 +486,8 @@ class Replica(process):
                 #add operation at the next slot
                 output('starting new operation', operation, 'on request from replica', replica_id)
                 start_new_operation(operation, client, client_id, sequence_number)
-
+                #send the forward shuttle, result shuttle to the next replica
+                send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
 
     # def check_timeout(timeout):
     #     for key, val in inprogress_operations.items():
@@ -509,5 +515,5 @@ class Replica(process):
 
         output('Replica Head: Sequence number', sequence_number)
 
-        #send the forward shuttle, result shuttle to the next replica
-        send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
+        # #send the forward shuttle, result shuttle to the next replica
+        # send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
