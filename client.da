@@ -93,7 +93,6 @@ class Client(process):
         self.verify_key_hex_map = {}
         self.signing_key = None
 
-
         #read workload from config file and get workload for client id
         #this will happen for every client
         #read file only once and get from there, later
@@ -125,9 +124,8 @@ class Client(process):
             encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
             send(('ClientRequest', encrypted_operation, operation_hex, sequence_number, id), to=configuration['config_0']['head'])
             sequence_number += 1
-            output('Client: Sequence number', sequence_number)
+
             result = operations.perform_operation(operation, expected_dict)
-            #figure out and add timeout here
         
         if await(len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload)):
             output('Received message for operation ')            
@@ -137,6 +135,7 @@ class Client(process):
             output("Actual result matching with expected result")
         else:
             output("Actual result not macthing with expected result")
+
 
     def synchronous_operations():
         for operation in client_workload:
