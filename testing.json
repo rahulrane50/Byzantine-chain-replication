@@ -1,0 +1,30 @@
+{
+    "testcase_1": {
+        "Description": "For single client and single put operation check for result.",
+        "Expected Results": "Client must receive result before timeout and expected dict at the end of workload must match with actual results.",
+        "workload": ["put('movie','star'); get('movie')"],
+        "expected_dict": {
+            "movie": "star"
+        }
+    },
+
+    "testcase_2": {
+        "Description": "For single client and multiple operations check for result.",
+        "Expected Results": "Client must receive result before timeout and expected dict at the end of workload must match with actual results.",
+        "workload": ["put('movie','star'); append('movie',' wars'); get('movie')"],
+        "expected_dict": {
+            "movie": "star wars"
+        }
+    },
+    
+    "testcase_3": {
+        "Description": "One of the operation sent by client gets timed out..",
+        "Expected Results": "Client must retransmit the request by same request id and received a successful response of retransmitted request.",
+        "workload": ["put('movie','star'); append('movie',' wars'); get('movie')"],
+        "expected_dict": {
+            "movie": "star wars"
+        },
+        "retransmit_request" : [0, 1, true]
+    }
+
+}
