@@ -8,6 +8,9 @@ config_file = import_da('read_config_file')
 def main():
     config_file.read_config_file()
     properties = config_file.get_olympus_properties()
+    
+    testing_scenatios = config_file.get_testing_file()
+    output("testing scenations :", testing_scenatios)
 
     t = properties['t']
     num_clients = properties['num_client']
