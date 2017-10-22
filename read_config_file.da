@@ -25,8 +25,8 @@ def separate_properties():
     olympus_properties['replica_hosts'] = config['replica_hosts']
     olympus_properties['head_timeout'] = config['head_timeout']
     olympus_properties['nonhead_timeout'] = config['nonhead_timeout']
-    olympus_properties['num_client'] = config['num_client']
 
+    client_properties['num_client'] = config['num_client']
     client_properties['client_timeout'] = config['client_timeout']
     client_properties['hosts'] = config['hosts']
     client_properties['client_hosts'] = config['client_hosts']
