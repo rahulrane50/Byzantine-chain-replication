@@ -51,7 +51,6 @@ def verify_result_statement(verify_key, statement, hashed_result):
     verified = True
     result_statement = None
     verified_result_statement = sign.verify_sign(verify_key, statement)
-    #print("verified_result_statement :", verified_result_statement)
     if verified_result_statement == None:
         verified = False
         return verified
@@ -94,12 +93,11 @@ class Replica(process):
         verified = check_history(history, slot_number, operation, replica_id)
         if not verified:
             output('Replica Head: detected invalid slot and operation in previous order proofs. Aborting..')
-            #TO-DO: make the system move forward still
         else:
             output('Replica', replica_id, ': successfully verified previous order statements')
-            order_statement = messages.OrderStatement('order', slot_number, operation)    # <'order', slot, operation>, slot is incremented in the class
+            order_statement = messages.OrderStatement('order', slot_number, operation)    # <'order', slot, operation>
             signed_order_statement = sign.sign_msg(signing_key, pickle.dumps(order_statement))
-            
+
             order_proof = messages.Proof(signed_order_statement, slot_number, operation)
 
             forward_shuttle = messages.Shuttle(order_proof, 'head', config['replica_1'], client)
@@ -111,42 +109,41 @@ class Replica(process):
     def check_history(history, slot_number, operation, replica_index):
         verified = True
         for order_proof in history:
+
             if order_proof.slot == slot_number or order_proof.slot > slot_number:
                 verified = False
                 output('Replica', replica_id, 'detected invalid slot and operation for operation in previous order proof:', operation)
                 break
             else:
-                verify_signed_order_statements(order_proof, replica_index, slot_number, operation)
+                verfied = verify_all_order_statements(order_proof, slot_number, operation, replica_index)
+        output('exiting check hist')
         return verified
 
-    #check slots used by older order proofs
-    def check_previous_order_proofs(slot_number, operation):
+
+    def verify_all_order_statements(order_proof, slot_number, operation, replica_index):
+        order_statements = order_proof.statements
+        index = 0
         verified = True
-        for order_proof in history:
-            # slot_number: new slot number, operation: new incoming operation
-            # for each order proof in the history of head
-            # order proof will have previous slot and operation
-            # if any previous slot equals the new slot, the new slot is wrong
-            # all previous slots must be smaller than the current slot
-            # the operation at that slot can be same or different
-            # checking for same operation at same slot will only happen during execution of a new operation
-            # this checking will not be considered from the history
-            if order_proof.slot == slot_number or order_proof.slot > slot_number:
-                verified = False
-                output('Replica', replica_id, 'detected invalid slot and operation')
-                break
-            else:
-                # check only the slot used by order statement said by tail in every order proof
-                # since, invalid slots used by any other replica would have been previously detected
-                # TO-DO: or a previous replica could have been faulty, and do this checking for all order statements
-                # but what if the head is also faulty? For now, do this
-                order_statements = order_proof.statements
-                output("order statements :", order_statements)
-                result = sign.verify_sign(verify_key_hex_map['tail'], order_statements[-1])
-                output("result :", result)
-                result = pickle.loads(result)
-                if result.slot > slot_number or result.slot == slot_number:
-                    output('Replica', replica_id, 'detected invalid slot and operation')
+        
+        if replica_index == 'head' and len(order_statements) == 0:
+            verified = False
+        elif not replica_index == 'head' and not replica_index == 'tail' and not len(order_statements) == replica_index:
+            verified = False
+        elif replica_index == 'tail' and not len(order_statements) == len(config) - 1:
+            verified = False
+
+        order_stmt = sign.verify_sign(verify_key_hex_map['head'], order_statements[index])
+        order_stmt = pickle.loads(order_stmt)
+        if order_stmt.slot == slot_number or order_stmt.slot > slot_number:
+            verified = False
+
+        if verified and not replica_index == 'head':
+            for index in range(1, len(order_statements)):
+                output('verofy order stmt', index)
+                #output(order_statements)
+                order_stmt = sign.verify_sign(verify_key_hex_map['replica_' + str(index)], order_statements[index])
+                order_stmt = pickle.loads(order_stmt)
+                if order_stmt.slot == slot_number or order_stmt.slot > slot_number:
                     verified = False
                     break
         return verified
@@ -154,7 +151,9 @@ class Replica(process):
 
     def check_previous_statements(unsigned_order_statements, slot, operation):
         verified = True
-        for statement in unsigned_order_statements:            
+        output('unsigned order stmt', unsigned_order_statements)
+        for statement in unsigned_order_statements:
+            output('statement in check previous stmts', statement.slot, statement.operation, 'incoming values ', slot, operation)
             if not (statement.slot == slot and statement.operation == operation):
                 output('Replica', replica_id, 'detected invalid slot and operation while checking prev order statements for ',  slot, operation)
                 verified = False
@@ -164,22 +163,23 @@ class Replica(process):
 
     #add order statement to order proof contained in the forward shuttle
     def add_order_statement(forward_shuttle, operation, replica_index):
-        #TO-DO: add verification of all signed statements in the order proof
-        #if that passes, do this
+        verified = True      
         slot_number += 1
-        #result = verify_signed_order_statements(forward_shuttle.order_proof, replica_index, slot_number, operation)
-        result = 'OK'
-        output('Replica', replica_id, ': successfully verified previous order statements')
-        if result == 'OK':
+        verified = check_history(history, slot_number, operation, replica_index)
+        if verified:
+            verified = verify_signed_order_statements(forward_shuttle.order_proof, replica_index, slot_number, operation)        
+        if verified:
+            output('Replica', replica_id, ': successfully verified previous order statements')
             order_statement = messages.OrderStatement('order', slot_number, operation)
             signed_order_statement = sign.sign_msg(signing_key, pickle.dumps(order_statement))
 
             order_proof = forward_shuttle.order_proof            
             order_proof.add_statement(signed_order_statement)
-            history.append(order_proof)
-        elif result == 'fail':
-            #TO-DO: drop this message, and make the system move forward
+            history.append(order_proof)            
+        else:
+            #send reconfig request
             output('Invalid order proof detected at replica', replica_id)
+        return verified
 
 
     def verify_signed_order_statements(order_proof, replica_index, slot_number, operation):
@@ -190,35 +190,28 @@ class Replica(process):
         verified = True
 
         if result == None:
-            return 'fail'
+            verified = False
         else:
             result = pickle.loads(result)            
             unsigned_order_statements.append(result)
 
-        if not replica_index == 'head' and not replica_index == 'tail':
-            map_key = 'replica_'
-            for index in range(1, replica_index):
-                result = sign.verify_sign(verify_key_hex_map[map_key + str(index)], order_statements[index])
+        if not replica_index == 'head':
+            if replica_index == 'tail':
+                replica_index = len(config)
+                map_key = 'replica_'
+                for index in range(1, replica_index):
+                    result = sign.verify_sign(verify_key_hex_map[map_key + str(index)], order_statements[index])
 
-                if result == None:
-                    return 'fail'
-                else:
-                    result = pickle.loads(result)
-                    unsigned_order_statements.append(result)
-        elif replica_index == 'tail':
-            result = sign.verify_sign(verify_key_hex_map['tail'], order_statements[-1])
-            if result == None:
-                return 'fail'
-            else:
-                result = pickle.loads(result)
-                unsigned_order_statements.append(result)
-        
+                    if result == None:
+                        verified = False
+                        break
+                    else:
+                        result = pickle.loads(result)
+                        unsigned_order_statements.append(result)
+
         verified = check_previous_statements(unsigned_order_statements, slot_number, operation)
-
-        #this check is for actual order statements
-        if not verified:
-            return 'fail'
-        return 'OK'
+        
+        return verified
 
     def verify_result_proof(result_proof, result):
         #verify hash
@@ -273,44 +266,31 @@ class Replica(process):
     def receive(msg=('ClientRequest', encrypted_operation, operation_hex, sequence_number, client_id,retransmit_req, ), from_=client):
         replica_box = Box(priv_key, public_key_map['client_'+ str(client_id)])
 
-        #TO-DO: handle that verification will fail
         #verify that the operation really came from that particular client
         operation = sign.verify_msg(encrypted_operation, replica_box, operation_hex,
         verify_key_hex_map['client_'+str(client_id)])
-        output("Replica Head: operation received from client :", operation)
-        #Check for failure trigger condition
-        failure_error = handle_failure_trigger('replica_0', client_id, sequence_number, failure_scenario_properties,'client_request')
-        output("failure_error :", failure_error)
-        if failure_error:
-            failure_error_dict = handle_failure_error(failure_error)
+        if not operation == None:
+            output("Replica Head: operation received from client :", operation)
 
-        if failure_error and failure_error_dict['operation']:
-            operation = failure_error_dict['operation']
-            output("Injecting failure change operation on head replica")
-        
-        # #add operation at the next slot
-        # forward_shuttle = order_operation(operation, client)
-        # output('Replica:', replica_id, 'orderCommand transition')
+            #Check for failure trigger condition
+            failure_error = handle_failure_trigger('replica_0', client_id, sequence_number, failure_scenario_properties,'client_request')
+            output("failure_error :", failure_error)
+            if failure_error:
+                failure_error_dict = handle_failure_error(failure_error)
 
-        # #apply operation to running state and add result proof to forward shuttle
-        # result = operations.perform_operation(operation, dictionary)
-        # output('State of dictionary at Head:', dictionary)
-        # output('Result obtained at Head for operation:', operation,'is: ',result)
-        # result_proof = create_result_proof(result, slot_number, operation)
-        # forward_shuttle.add_result_proof(result_proof)
+            if failure_error and failure_error_dict['operation']:
+                operation = failure_error_dict['operation']
+                output("Injecting failure change operation on head replica")
+            
+            forward_shuttle = start_new_operation(operation, client, client_id, sequence_number)
 
-        # output('Replica Head: Sequence number', sequence_number)
-
-        # #send the forward shuttle, result shuttle to the next replica
-        # send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
-        forward_shuttle = start_new_operation(operation, client, client_id, sequence_number)
-
-
-        #send the forward shuttle, result shuttle to the next replica
-        if not retransmit_req:
-            send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
-        else:
-            output("Retransmit failure injected hence not sending forward shuttle.")
+            #send the forward shuttle, result shuttle to the next replica
+            if not retransmit_req and not forward_shuttle == None:
+                send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
+            elif forward_shuttle == None:
+                output('Replica', replica_id, 'Incorrect behaviour detected. Send reconfiguration request to Olympus')
+            else:
+                output("Retransmit failure injected hence not sending forward shuttle.")
 
 
     def receive(msg=('ResultShuttle', result_shuttle, result, sequence_number, client_id,), from_=replica):
@@ -361,25 +341,26 @@ class Replica(process):
         failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties,'forwarded_request')
         output("failure_error :", failure_error)
         if failure_error:
-            failure_error_dict = handle_failure_error(failure_error)        
+            failure_error_dict = handle_failure_error(failure_error)
 
-        #TO-DO: check validity of order proof in the shuttle ## done, verifying from within add_order_statement
-        #we are updating the sender on the shuttle because we want to verify it
         #add order statement to the order proof in the shuttle
-        add_order_statement(forward_shuttle, operation, my_index)
-        output('Replica:', replica_id, 'orderCommand transition')
-        forward_shuttle.update_sender(config['replica_' + str(my_index)])
+        success = add_order_statement(forward_shuttle, operation, my_index)
+        if success:
+            output('Replica:', replica_id, 'orderCommand transition')
+            forward_shuttle.update_sender(config['replica_' + str(my_index)])
 
-        #applying operation to running state and add result statement to the result shuttle
-        result = operations.perform_operation(operation, dictionary)
-        output('State of dictionary at', 'replica_' + str(my_index),':', dictionary)
-        add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')))
+            #applying operation to running state and add result statement to the result shuttle
+            result = operations.perform_operation(operation, dictionary)
+            output('State of dictionary at', 'replica_' + str(my_index),':', dictionary)
+            add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')))
 
-        #send both shuttles to next replica
-        if  my_index == len(config) - 3:
-            send(('TailRequest', forward_shuttle, operation, client, sequence_number, client_id,), to=config['tail'])
-        else:                                                                                                                                                           
-            send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_' + str(my_index + 1)])
+            #send both shuttles to next replica
+            if  my_index == len(config) - 3:
+                send(('TailRequest', forward_shuttle, operation, client, sequence_number, client_id,), to=config['tail'])
+            else:                                                                                                                                                           
+                send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_' + str(my_index + 1)])
+        else:
+            output('Replica', replica_id, 'Incorrect behaviour was detected. Send reconfiguration request to Olympus')
 
 
     #Tail Replica
@@ -397,28 +378,32 @@ class Replica(process):
         # add order statement to the order proof in the shuttle
         # 3rd arg here is len(configuration) instead of 'tail', b/c we loop
         # on that arg in the called method
-        add_order_statement(forward_shuttle, operation, len(config) - 2)
-        output('Replica:', replica_id, 'orderCommand transition')
-        output('Replica:', replica_id, 'added order statement to shuttle.(', slot_number, ', ', operation, ') is persistent')
+        success = add_order_statement(forward_shuttle, operation, len(config) - 2)
+        if success:
+            output('Replica:', replica_id, 'orderCommand transition')
+            output('Replica:', replica_id, 'added order statement to shuttle.(', slot_number, ', ', operation, ') is persistent')
 
-        #applying operation to running state and add result statement to the result shuttle
-        result = operations.perform_operation(operation, dictionary)
-        output('State of dictionary at Tail:', dictionary)
-        add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')))
+            #applying operation to running state and add result statement to the result shuttle
+            result = operations.perform_operation(operation, dictionary)
+            output('State of dictionary at Tail:', dictionary)
+            add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')))
 
-        #the order proof is complete, send result to client
-        send(('Result', forward_shuttle.result_proof, result, str(client_id) + '_' + str(sequence_number), operation), to=client)
-        output("Tail Replica: sent reply to client", client)
-        dump_expected_result(dictionary, client_id)
+            #the order proof is complete, send result to client
+            send(('Result', forward_shuttle.result_proof, result, str(client_id) + '_' + str(sequence_number), operation), to=client)
+            output("Tail Replica: sent reply to client", client)
+            dump_expected_result(dictionary, client_id)
 
-        #cache result and result shuttle
-        cache_result(forward_shuttle, result, client, sequence_number, client_id)
-        output('Replica', replica_id, ': cached result:', cache)
+            #cache result and result shuttle
+            cache_result(forward_shuttle, result, client, sequence_number, client_id)
+            output('Replica', replica_id, ': cached result:', cache)
 
-        #send the shuttle in the reverse direction
-        # send(('ResultShuttle', forward_shuttle, result, sequence_number, client_id,), to=config['replica_' +
-        # str(len(config) - 2)])
-        output('Replica', replica_id ,': Sent result shuttle to', 'replica_' + str(len(config) - 2))
+            #send the shuttle in the reverse direction
+            send(('ResultShuttle', forward_shuttle, result, sequence_number, client_id,), to=config['replica_' +
+            str(len(config) - 2)])
+            output('Replica', replica_id ,': Sent result shuttle to', 'replica_' + str(len(config) - 2))
+        else:
+            output('Replica', replica_id, 'Incorrect behaviour was detected. Send reconfiguration request to Olympus')
+
 
     def receive(msg=('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, client_id), from_=client):
         if mode == 'IMMUTABLE':
@@ -444,8 +429,8 @@ class Replica(process):
             if await(not result == None):
                 send(('RetransmitResult', result_proof, result[1], str(client_id) + '_' + str(sequence_number) + '_' + 'resent', operation), to=client)
                 found = True                            
-                break
-            elif timeout(head_timeout):
+                #break
+            elif timeout(nonhead_timeout/1000):
                 output('Replica', replica_id,'timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..')
 
 
@@ -470,15 +455,8 @@ class Replica(process):
                         send(('RetransmitResult', result_proof, result[1], str(client_id) + '_' + str(sequence_number) + '_' + 'resent', operation), to=client)
                         found = True
                         break
-                    elif timeout(head_timeout):
+                    elif timeout(head_timeout/1000):
                         output('Replica head timed out waiting for the result shuttle in retransmission. Sending reconfig request..')
-
-                    # while(result == None):
-                    #     timed_out = check_timeout(head_timeout)
-                    #     if(timed_out)
-                    #         break
-                    #     time.sleep(10)
-                    #     result = cache.get(str(client_id) + '_' + str(sequence_number))
                 elif count > 0:
                     output('Replica head: Already started timer for this retransmission request, ignoring the request from replica', replica_id)
             if not found:
@@ -492,15 +470,17 @@ class Replica(process):
 
     def start_new_operation(operation, client, client_id, sequence_number):
         #add operation at the next slot
+        forward_shuttle = None
         forward_shuttle = order_operation(operation, client)
-        output('Replica:', replica_id, 'orderCommand transition')
+        if not forward_shuttle == None:
+            output('Replica:', replica_id, 'orderCommand transition')
 
-        #apply operation to running state and add result proof to forward shuttle
-        result = operations.perform_operation(operation, dictionary)
-        output('State of dictionary at Head:', dictionary)
-        output('Result obtained at Head for operation:', operation,'is: ',result)
-        result_proof = create_result_proof(result, slot_number, operation)
-        forward_shuttle.add_result_proof(result_proof)
+            #apply operation to running state and add result proof to forward shuttle
+            result = operations.perform_operation(operation, dictionary)
+            output('State of dictionary at Head:', dictionary)
+            output('Result obtained at Head for operation:', operation,'is: ',result)
+            result_proof = create_result_proof(result, slot_number, operation)
+            forward_shuttle.add_result_proof(result_proof)
 
-        output('Replica Head: Sequence number', sequence_number)
+            output('Replica Head: Sequence number', sequence_number)
         return forward_shuttle
