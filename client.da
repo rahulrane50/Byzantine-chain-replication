@@ -15,7 +15,7 @@ sign = import_da('sign')
 operations = import_da('operations')
 config(clock is lamport)
 
-client_properties = {}
+#client_properties = {}
 
 operations_dict = {
                     0: 'put(\'message\', \'hello\')',
@@ -112,8 +112,8 @@ class Client(process):
         #read workload from config file and get workload for client id
         #this will happen for every client
         #read file only once and get from there, later
-        client_properties = read_properties()
-        self.client_workload = []
+        self.client_properties = read_properties()
+        #self.client_workload = []
         self.testing_scenarios = config_file.get_testing_file()
 
     def run():
@@ -133,7 +133,7 @@ class Client(process):
 
         #for all operations in this client's workload, send requests to head
         client_box = Box(priv_key, public_key_map['head'])
-        
+        global expected_dict
         for key, val in testing_scenarios.items():
             output("Testcase :", key)
             output("Description :", val["Description"])

@@ -25,6 +25,11 @@
             "movie": "star wars"
         },
         "retransmit_request" : [0, 1, true]
+    },
+    "testcase_4": {
+        "Description": "Providing random workload to client.",
+        "Expected Results": "Client must send operations generated randomly and verify at the end if actual results are matching with expected result."
     }
+ 
 
 }

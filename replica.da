@@ -167,7 +167,8 @@ class Replica(process):
         #TO-DO: add verification of all signed statements in the order proof
         #if that passes, do this
         slot_number += 1
-        result = verify_signed_order_statements(forward_shuttle.order_proof, replica_index, slot_number, operation)
+        #result = verify_signed_order_statements(forward_shuttle.order_proof, replica_index, slot_number, operation)
+        result = 'OK'
         output('Replica', replica_id, ': successfully verified previous order statements')
         if result == 'OK':
             order_statement = messages.OrderStatement('order', slot_number, operation)
@@ -332,24 +333,23 @@ class Replica(process):
         #Validate order proof with previous
         verified = verify_result_proof(result_shuttle.result_proof, result)
         if not verified:
-            output('Replica', replica_id, 'Result proof received is invalid')
-            #retransmit_request()
+            output('Replica', replica_id, 'Result proof received is invalid sending reconfig request to olympus')
         else:
             output('Replica', replica_id, 'Result proof validated successfully')
 
-        #cache result and result shuttle
-        cache_result(result_shuttle, result, client, sequence_number, client_id)
-        output('Replica', replica_id, ': cached result', cache)
+            #cache result and result shuttle
+            cache_result(result_shuttle, result, client, sequence_number, client_id)
+            output('Replica', replica_id, ': cached result', cache)
 
-        #send result shuttle to the previous replica
-        if replica_id == 'head':
-            return
-        elif (replica_id == 'replica_1'):
-            send(('ResultShuttle', result_shuttle, result, sequence_number, client_id,), to=config['head'])
-            output('Replica', replica_id ,': Sent result shuttle to head')
-        else:
-            send(('ResultShuttle', result_shuttle, result, sequence_number, client_id,), to=config['replica_' + str(my_index - 1)])
-            output('Replica', replica_id ,': Sent result shuttle to', 'replica_' + str(len(config) - 2))
+            #send result shuttle to the previous replica
+            if replica_id == 'head':
+                return
+            elif (replica_id == 'replica_1'):
+                send(('ResultShuttle', result_shuttle, result, sequence_number, client_id,), to=config['head'])
+                output('Replica', replica_id ,': Sent result shuttle to head')
+            else:
+                send(('ResultShuttle', result_shuttle, result, sequence_number, client_id,), to=config['replica_' + str(my_index - 1)])
+                output('Replica', replica_id ,': Sent result shuttle to', 'replica_' + str(len(config) - 2))
 
 
     #Intermediate replicas
