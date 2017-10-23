@@ -29,7 +29,13 @@
     "testcase_4": {
         "Description": "Providing random workload to client.",
         "Expected Results": "Client must send operations generated randomly and verify at the end if actual results are matching with expected result."
+    },
+    "testcase_5": {
+        "Description": "For single client and multiple operations check for result.",
+        "Expected Results": "Client must receive result before timeout and expected dict at the end of workload must match with actual results.",
+        "workload" : ["put('jedi','luke skywalker'); slice('jedi','0:4'); get('jedi')"],
+        "expected_dict": {
+            "movie": "luke"
+        }
     }
- 
-
 }

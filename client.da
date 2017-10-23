@@ -66,7 +66,6 @@ def verify_result_statement(verify_key, statement, hashed_result):
     if verified:
         result_statement = pickle.loads(verified_result_statement)
     if not sodium_memcmp(hashed_result, result_statement.result_hash):
-        output('Client ', id, ': The hash of result did not match')
         verified = False
     return verified, result_statement
 

@@ -325,7 +325,7 @@ class Replica(process):
             failure_error_dict = handle_failure_error(failure_error)
             if failure_error_dict['result']:
                 output("Injecting result shuttle failure.")
-                result = "OK"
+                result = "FAIL"
             elif failure_error_dict['drop_result']:
                 output("Injecting drop head result statement failure.")
                 result_shuttle.result_proof.statements.pop(0)
