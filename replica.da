@@ -300,9 +300,9 @@ class Replica(process):
 
         #Check for failure trigger condition
         failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties, 'result_shuttle')
-        output("failure_error :", failure_error)
         if failure_error:
             failure_error_dict = handle_failure_error(failure_error)
+            output("failure error dict :", failure_error_dict)
             if failure_error_dict['result']:
                 output("Injecting result shuttle failure.")
                 result = "FAIL"
@@ -342,6 +342,12 @@ class Replica(process):
         output("failure_error :", failure_error)
         if failure_error:
             failure_error_dict = handle_failure_error(failure_error)
+            if failure_error_dict['result']:
+                output("Injecting result shuttle failure.")
+                result = "FAIL"
+            elif failure_error_dict['drop_result']:
+                output("Injecting drop head result statement failure.")
+                result_shuttle.result_proof.statements.pop(0)
 
         #add order statement to the order proof in the shuttle
         success = add_order_statement(forward_shuttle, operation, my_index)
