@@ -355,7 +355,7 @@ class Replica(process):
             add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')))
 
             #send both shuttles to next replica
-            if  my_index == len(config) - 3:
+            if  my_index == len(config) - 2:
                 send(('TailRequest', forward_shuttle, operation, client, sequence_number, client_id,), to=config['tail'])
             else:                                                                                                                                                           
                 send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_' + str(my_index + 1)])
