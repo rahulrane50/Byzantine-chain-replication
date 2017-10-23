@@ -1,0 +1,314 @@
+CSE 535 Asynchronous Systems
+Phase 1: Pseudocode submission
+Team: Rahul Rane(rrane), Rasika Pohankar(rpohankar)
+========================================================
+
+Shuttle Protocol
+
+1. Olympus: initializing new configuration
+    #Olympus might create multiple configurations at a time but at any point of time only one configuration is active.
+	#Olympus forks 2t+1 replicas (processes) to tolerate t failures. The processes might be running on different hosts or on same host.
+    replicas[] = createReplica(2t+1) 
+
+    # Stores its map in configuration in a format of replica identifier as a key and (host, pid) as value.
+    configurationMap["olympus"] = (host, pID)
+    configurationMap["head"] = (host, replicas[0])     #First process is head
+    configurationMap["tail"] = (host, replicas[2t+1])  #Last process is tail
+    for index in (1, 2t):
+		configurationMap["replica_" + index] = (host, replicas[index])
+
+    #Send the configuration map to each replica so that each replica can find its predecessor and successor
+    send <"Configuration", configurationMap> to each of the replicas
+
+2. Olympus : sends public and private keys
+    #Create public and private keys for each of replica.
+    <publicKeys, privateKeys> = generateKeys(largeRandomNumber)
+    
+	#Share public key with every client
+    send <"Keys", publicKeys> to each replica and client
+
+    #Share public keys with of successor and predecessor with every replica
+    send <"Keys", publicKeys> to each replica and client
+    
+	#Send private key of each replica to itself.
+    send <"Keys", privateKeys> to each respective replica
+
+
+3. Client: requests current active configuration
+    #Get current active configuration from Olympus
+    send <"getConfiguration", self.clientID> to Olympus
+
+
+4. Olympus: on receiving <"getConfiguration", clientID>
+    #Send current configuration to client
+    send <"Configuration", configurationMap> to client
+
+
+5. Client: sends operation to head
+    #Sends operation to head got from configuration.
+    clientRequest = ClientRequest(configurationID, issuerID, receiverID = head, operation)
+    send <"Operation", clientRequest> to head replica 
+
+
+6. Replica: each replica can perform following actions
+	# It verifies if the order statement is signed i.e., issued by all previous replicas 
+    # by verifying with their public keys.
+    def verifyCorrectness():
+		if size of orderProof > 0
+			for replica in configurationMap:
+				isSigned = checkSignature(orderProof.orderStatement, replica.publicKeys)
+
+		#It will check that every other replica has same operation at the given slot in its history. 
+		#Replica will do this by looking at the order statements in the order proof present inside the shuttle. 
+		#A conflict can be due to different operation at same slot or no operation at that slot.
+		isConflicted = checkConflictingOperation(slot, operation, orderProof)
+
+		if (isSigned is True) and (isConflicted is False)
+			return true
+		return false
+
+
+    #It computes the operation at each replica and added in  history at the given slot.
+	def orderOperationAndCompute(configurationID):
+        orderStatement.sign()
+        orderProof.add(orderStatement)
+
+        self.history.update(slot, operation)
+        
+        result 			= compute(operation)
+        resultHash 		= computeHash(result)    
+        resultStatement = (configurationID, operation, resultHash)
+        resultProof.add(resultStatement)
+        
+        return (result, resultShuttle)        
+
+    #The replica which is misbehaving it reported to olympus.
+	def reportMisbehaviour(configurationID):
+        #misbehavingProcessID is the one whose signature did not match or the one who had issued a conflicting operation
+        reconfigurationRequest = ReconfigurationRequest(configurationID, slot, operation, misbehavingProcessID, self)
+        send <"Reconfiguration", reconfigurationRequest> to Olympus
+
+
+7. Head Replica: on receiving <"Operation", clientRequest>
+    replica         = configurationMap["head"]
+    slot            = Slot(sequenceNumber)
+    configurationID = clientRequest.configurationID
+    successor       = configurationMap["replica_" + (self.id + 1)]
+
+    #If replica is head then it will receive request from client
+    orderStatement  = OrderStatement(configurationID, slot, clientRequest.operation)
+	orderStatement.sign(self.privateKey)
+    orderProof      = OrderProof(configurationID, orderStatement)
+    forwardShuttle  = Shuttle(orderProof, configurationID, issuer = self.id, receiver = successor)
+
+    resultProof     = ResultProof()  #empty because the result has not been computed yet
+    resultProof.configurationID = configurationID
+    resultShuttle   = Shuttle(resultProof, successor, clientRequest.id, clientRequest.source)  #empty because the result has not been computed yet
+
+		
+    #if received order statement in proof is signed and operation is not conflicting then,
+    #add that operation at slot s in history(i.e. Add orderStatement to orderProof and compute operation)
+    isCorrect = verfiyCorrectness()
+    if (isCorrect)
+        orderOperationAndCompute(configurationID)
+        send <"Operation", forwardShuttle, resultShuttle> to next replica
+    else:
+    #Report this proof of misbehaviour to Olympus by sending reconfiguration request
+        reportMisbehaviour(configurationID)
+
+
+8. Tail Replica: on receiving <"Operation", forwardShuttle, resultShuttle>
+    configurationID = forwardShuttle.configurationID
+	predecessor     = configurationMap["replica_" + (self.id - 1)]
+    client 			= resultShuttle.clientID
+
+    isCorrect = verifyCorrectness()
+
+    if (isCorrect)
+        (result, resultShuttle) = orderOperationAndCompute(configurationID)
+    else:
+        reportMisbehaviour(configurationID)
+
+    #send the result and result proof to the client
+    send <"resultShuttle", result, resultShuttle> to client
+    #send the result and result proof in the reverse direction towards head
+    send <"resultShuttle", result, resultShuttle> to predecessor
+
+
+9. Replica: on receiving <"Operation", forwardShuttle, reverseShuttle>    
+    configurationID = forwardShuttle.configurationID
+    successor       = configurationMap["replica_" + (self.id+ 1)]   
+
+    isCorrect = verfiyCorrectness()
+    if (isCorrect)
+        (result, resultShuttle) = orderOperationAndCompute(configurationID)
+    else:
+        reportMisbehaviour(configurationID)
+
+    #Forward the shuttle to next replica if any.
+    send <"Operation", forwardShuttle, resultShuttle> to successor
+
+
+10. Replica: on receiving <"ResultShuttle", resultShuttle, result>
+    predecessor     = configurationMap["replica_" + (self.id - 1)]
+
+    #each replica saves the result and result proof in the cache, to answer queries in case of failure
+    #clearing of the cache will happen periodically on a separate thread, at the replica
+    self.saveToCache(resultShuttle.clientRequestID, result, resultShuttle)
+    send <"resultShuttle", result, resultShuttle> to predecessor
+
+
+11. Client: on receiving <"resultShuttle", result, resultShuttle, requestID>
+    #Client checks that hash(result) corresponds to all result statements in the result proof.
+    #Client will compute the hash of result and compare it to hash present in every result_statement present in the result proof.
+    isValidResponse =  verifyHash(response, publicKey)
+
+    #if response is not valid due to mismatch on any one, the client will not accept the response and  will resend the request, 
+    #and report to Olympus
+    If not isValidResponse :
+        send <"proofOfMisbehaviour", requestID, clientID> to Olympus
+        send <"retransmitRequest", requestID, clientID, operation, args> to head
+
+
+12. Olympus: on receiving <"Reconfiguration", reconfigurationRequest>
+    #Sends signed wedge request to each of replica in configuration
+    issuerID 	= reconfigurationRequest.issuerID
+    receiverID 	= reconfigurationRequest.receiverID
+    replica 	= configurationMap["replica_" + receiverID]
+
+    wedgeRequest 		= WedgeRequest(issuerID, recevierID)
+    signedWedgeRequest 	= signWedgeRequest(wedgeRequest, self.privateKey)
+
+    send <"WedgeRequest", signedWedgeRequest> to each replica 
+
+
+13. Replica: on receiving <"WedgeRequest", signedWedgeRequest>
+    #Replica will create wedge statement from all the order proofs issued by itself, the latest checkpoint proof and running state
+    #and sign it with it's private key, then send it to olympus
+    replica 				= configurationMap["replica_" + self.id]
+    wedgeStatement  		= WedgeStatement(self.history, self.checkpointProof, self.runningState)
+    signedWedgeStatement 	= signWedgeStatement(wedgeStatement, self.privateKey)
+    send <"WedgeStatement", signedWedgeStatement> to Olympus 
+
+
+14. Olympus: on receiving <"WedgeStatement", signedWedgeStatements>
+    #Olympus will wait for all the wedge statements from all replicas in quorum. Each wedge statement has history in it. 
+    #valid history means that for any two replicas, both have the same operation at any slot
+    isValid = checkValidHistory(signedWedgeStatements)
+
+	historyofAllRelicas = []
+    for replica in quorum:
+        historyofAllReplicas.add(replica.history)
+		
+    #Longest running history is selected from history of all replicas present in wedgeStatement request which has longest <slot, operation> sequences.
+	longestHistory  = getLongestRunningHistory(historyofAllReplicas)
+
+    #Correctness of longest running history of replica is checked by issuing catchup statements to all the other replicas. Catchup statement is the set of tuples (slot, operations) which are present in longest history but not performed by that replica.
+    for replica in quorum:
+        catchupStatement = longestHistory - replica.history
+        send <"CatchupStatement", catchupStatement> to each replica         
+
+
+15. Replica: on receiving <"CatchupStatement", catchupStatement>
+    replica = configurationMap["replica_" + self.id]
+    #Replica performs each of the operation mentioned in the catchup statement. 
+    #Adds its result to result proof and then computes hash value of the running state. 
+    for operation in catchupStatement.operations:
+		#this executes operation and changes the running state
+        result 	= compute(operation)
+        
+	runningStateHash 	= computeHash(self.runningState)
+    caughtupStatement 	= CaughtupStatement(catchupStatement.id, catchupStatement.configID, runningStateHash)
+    
+    send <"ValidateCaughtupStatement", caughtupStatement> to olympus
+
+
+16. Olympus: on receiving <"ValidateCaughtupStatement", caughtupStatements>
+    #Olympus validates each of the running state hash of each replica with other replica's running state hash stored in caughtupStatement.
+    isMatching = validateRunningStateHashes(caughtupStatements)
+
+	if isMatching is True:
+    	getRunningState: send <"GetRunningStateRequest"> to replica in quorum
+	else:
+		#new quorum is selected.It can be selected by removing that fault replica and taking new replica to form new quorum of t+1 replicas. 
+		#If none of the replica's hash matches then it will send reconfiguration
+    
+
+17. Replica: on receiving <"GetRunningStateRequest">
+	send <"RunningState", self.runningState> to olympus
+
+
+18. Olympus: on receiving <"RunningState", runningState>
+	#Olympus will receive running state of one replica from the quorum. It will compute its hash and compares it with hash value of running state stored in caughtup statement of that replica. If both hashes match then it will proceed else it will ask another replica's hash. 
+	ch = computeHash(runningState)
+    if ch != (caughtupStatements)_R.runningStateHash # R is one of the replica from quorum.
+		#Again ask another replica's running state. This process will continue until olympus gets matching running state hash.
+		Goto step 16:getRunningState
+	
+    #If both things match then olympus sends initHist state and objects running state to new configuration.
+    #The new initHist statement is created from hash value of running state.
+    initHistStatement = createSingedinitHistStatement(ch)
+    send <"initHistStatement", initHistStatement> to new configuration
+
+
+19. Head Replica: initialize Checkpoint shuttle
+    #Head replica will start checkpoint shuttle by computing hash of its running state and then forward the shuttle to next replica in chain.
+	successor       = configurationMap["replica_" + (self.id+ 1)]
+    runningStateHash = computeRunningStateHash(self.runningState)
+	checkpointStatement = CheckpointStatement(checkpoint, runningStateHash)
+    checkpointProof 	= CheckpointProof(checkpointStatement)
+    checkpointShuttle 	= CheckpointShuttle(issuer = self.id, receiver = successor, self.privateKey, checkpointProof)
+    send <"CheckpointShuttle", checkpointShuttle> to next replica
+
+
+20. Replica: on receiving <"CheckpointShuttle", checkpointShuttle>
+    #After receiving checkpoint shuttle replica will compute hash value of its running state i.e., all the <slot, operation> operated on that replica.
+	#It adds own checkpoint to that checkpoint shuttle and forwards to the next replica in chain.
+    runningStateHash = computeRunningStateHash(self.runningState)
+    checkpointStatement = CheckpointStatement(checkpoint, runningStateHash)
+    checkpointProof.add(checkpointStatement)
+	checkpointShuttle.add(checkpointProof)
+    if replica is tail :
+		#After reaching checkpoint shuttle to tail it returns the completed checkpoint proof to previous replicas
+        send <"ReverseCheckpointShuttle", checkpointShuttle>    
+    else:
+        send <"CheckpointShuttle", checkpointShuttle>
+
+
+21. Replica : on receiving <"ReverseCheckpointShuttle", reverseCheckpointShuttle>
+    #After receiving checkpoint shuttle started from tail it will remove its history previous to that checkpoint. 
+    self.removeHistory(reverseCheckpointShuttle)
+    self.storeCheckpoint(reverseCheckpointShuttle.checkpointProof) 
+
+
+22. Client: On timeout
+    #Client will wait for the response from tail replica until the timeout expires. If timeout expires then it retransmits the request.
+    retransmitRequest = ClientRequest(configurationID, issuerID, receiverID = head, 
+						operation, self.currentRequestID)
+    send <"RetransmitRequest", retransmitRequest> to head replica
+
+
+23. Replica: On receiving <"retransmitRequest", retransmitRequest>
+    #Replica will look for result cached corresponding to requestID,
+    #Periodically this cache of (requestID, result) will get cleared. So some operations may get repeated
+    result = getResult(retransmitRequest)
+    if result == null:
+        send <"retransmitRequest", retransmitRequest> to head
+    else if result != null:
+        send <"resultShuttle", result, retransmitRequest> to client
+    else if replica isImmutable:
+        errorStatement = ErrorStatement(self.id, retransmitRequest.id, 
+        retransmitRequest.clientID)
+        send <"errorStatement",clientID, errorStatement> to client
+
+    if replica == head
+        if replica.history contains (order,s,operation):
+            #Start timer
+        else
+            #Goto step 7
+
+
+24. Client: On receiving <"errorStatement", errorStatement>
+    send <"getConfiguration", errorStatement.clientID> to Olympus
+    send <"retransmitRequest", errorStatement.retransmitRequestID> to replica
+

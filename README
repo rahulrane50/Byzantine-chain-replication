@@ -8,10 +8,12 @@ PLATFORM:
 INSTRUCTIONS:
     A main process is a entry point for whole system which automatically reads config.txt to get configuration and testing.json to
     read input testdata. This can be run as :
-    python -m da -f -F output --logfilename ~/logfile.log --message-buffer-size 16384 -m main_process
+    python3 -m da -f -F output --logfilename ../logs/logfile.log --message-buffer-size 65536 -m main_process
 
 WORKLOAD GENERATION:
-    
+    For workload generation, the process reads the workload given in either testing.json or config.txt
+    It is stored as a list in the properties map for client. Index into the list gives workload for the respective client.
+    For pseudorandom workload generation, there is a dictionary with default operations, the specified random number generates operations from that dictionary.
 
 BUGS AND LIMITAIONS:
     None.
@@ -23,7 +25,16 @@ CONTRIBUTIONS:
             Added verification for result statements.
             Testing framework for getting input testdata implemented using simple python json module.
     
-    rpohankar:
+    rpohankar: Implemented workload generation, generation of request sequence in config file
+               Implemented dictionary object: support put, get, slice, append
+               Implemented replica functionality
+                   Head: handle new request: assign slot, sign order stmt & result stmt, send shuttle
+                   Head: handle retransmitted request as described in paper
+                   Handle shuttle: check validity of order proof (incl. signatures), add signed order statement and signed result statement, send updated shuttle
+                   Tail: send result to client; send result shuttle to predecessor
+                   Handle result shuttle: validate, save, and forward it
+                   Non-head: handle request: send cached result, send error, or forward req
+                   Creation of logs using command line option
 
 MAIN FILES:
     main process : main_process.da
@@ -32,9 +43,9 @@ MAIN FILES:
     replica : replica.da
 
 CODE SIZE:
-    LOC: algorithm - approx 650 
-         other - approx 300
-         total - approx 950
+    LOC: algorithm - approximately 650 
+         other - approximately 300
+         total - approximately 950
 
 LANGUAGE FEATURE USAGE:
-    
+    Used the quantifier some in 12 await statements for handling messages.

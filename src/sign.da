@@ -1,0 +1,48 @@
+import nacl.hash
+import nacl.encoding
+import nacl.signing
+from nacl.bindings.utils import sodium_memcmp
+
+def generate_hash(msg):
+    HASHER = nacl.hash.sha256
+    hash_val = HASHER(msg, encoder=nacl.encoding.HexEncoder)
+    return hash_val
+
+def sign_msg(signing_key, msg):
+    try:
+        binary_msg = msg.encode('ascii')
+    except Exception:
+        binary_msg = msg
+    signed_msg = signing_key.sign(binary_msg)
+    return signed_msg
+
+def encrypt_msg(msg, client_box):
+    msg_hash = generate_hash(msg)
+    encrypted_msg = client_box.encrypt(msg)
+    return (encrypted_msg, msg_hash)
+
+def verify_sign(verify_key_hex, msg):
+    try:
+        verified_msg = None
+        verify_key = nacl.signing.VerifyKey(verify_key_hex, encoder=nacl.encoding.HexEncoder)
+        verified_msg = verify_key.verify(msg)
+        try:
+            verified_msg = verified_msg.decode('ascii')
+        except UnicodeDecodeError:
+            pass
+    except nacl.exceptions.BadSignatureError:
+        pass
+    return verified_msg
+
+def verify_msg(encrypted_msg, replica_box, msg_hash, verify_key_hex):
+    try:
+        recvd_msg = replica_box.decrypt(encrypted_msg)
+        verified_msg = verify_sign(verify_key_hex, recvd_msg)
+
+        recvd_msg_hash = generate_hash(recvd_msg)
+        ret = sodium_memcmp(recvd_msg_hash, msg_hash)
+        if not ret:
+            return None
+        return verified_msg
+    except nacl.exceptions.CryptoError:
+        return None

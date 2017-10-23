@@ -1,0 +1,33 @@
+import sys
+olympus = import_da('olympus')
+replica = import_da('replica')
+client = import_da('client')
+config_file = import_da('read_config_file')
+
+
+def main():
+    config_file.read_config_file()
+    testing_scenarios = config_file.get_testing_file()
+    olympus_properties = config_file.get_olympus_properties()
+    client_properties = config_file.get_client_properties()
+
+    t = olympus_properties['t']
+    head_timeout = olympus_properties['head_timeout']
+    nonhead_timeout = olympus_properties['nonhead_timeout']
+
+    num_clients = client_properties['num_client']
+    num_replicas = int(t) * 2 + 1
+    client_timeout = int(client_properties['client_timeout'])/1000
+
+
+    replicas = new(replica.Replica, num=num_replicas)
+
+    olympus_p = new(olympus.Olympus, [1, num_replicas, num_clients, replicas, head_timeout, nonhead_timeout], num=1)
+    start(olympus_p)
+
+    clients = new(client.Client, num=num_clients)
+
+    clients_list = list(clients)
+    for index in range(0, num_clients):
+        setup(clients_list[index], (client_timeout, index, olympus_p))
+        start(clients_list[index])
