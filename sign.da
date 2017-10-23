@@ -35,9 +35,14 @@ def verify_sign(verify_key_hex, msg):
     return verified_msg
 
 def verify_msg(encrypted_msg, replica_box, msg_hash, verify_key_hex):
-    recvd_msg = replica_box.decrypt(encrypted_msg)
-    verified_msg = verify_sign(verify_key_hex, recvd_msg)
+    try:
+        recvd_msg = replica_box.decrypt(encrypted_msg)
+        verified_msg = verify_sign(verify_key_hex, recvd_msg)
 
-    recvd_msg_hash = generate_hash(recvd_msg)
-    ret = sodium_memcmp(recvd_msg_hash, msg_hash)
-    return verified_msg
+        recvd_msg_hash = generate_hash(recvd_msg)
+        ret = sodium_memcmp(recvd_msg_hash, msg_hash)
+        if not ret:
+            return None
+        return verified_msg
+    except nacl.exceptions.CryptoError:
+        return None
