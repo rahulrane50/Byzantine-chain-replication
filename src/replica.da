@@ -106,32 +106,37 @@ class Replica(process):
         return forward_shuttle
 
 
+    #check order proofs and statements in order proofs in history
     def check_history(history, slot_number, operation, replica_index):
         verified = True
         for order_proof in history:
-
+            #for any previous order proofs, if the slot number was incorrect
             if order_proof.slot == slot_number or order_proof.slot > slot_number:
                 verified = False
                 output('Replica', replica_id, 'detected invalid slot and operation for operation in previous order proof:', operation)
                 break
-            else:
+            else: #check all order statements in previous order proofs
                 verfied = verify_all_order_statements(order_proof, slot_number, operation, replica_index)
-        output('exiting check hist')
+        output('Replica', replica_index,': Verified history')
         return verified
 
 
+    #for any replica, check all order statements for validity in this order proof
     def verify_all_order_statements(order_proof, slot_number, operation, replica_index):
         order_statements = order_proof.statements
         index = 0
         verified = True
-        
+
+        #for an order proof in head's history, there should be 1 order statement present
         if replica_index == 'head' and len(order_statements) == 0:
             verified = False
+        #for an order proof in intermediate and tail replica's history, there should be order statements from all previous replicas
         elif not replica_index == 'head' and not replica_index == 'tail' and not len(order_statements) == replica_index:
             verified = False
         elif replica_index == 'tail' and not len(order_statements) == len(config) - 1:
             verified = False
 
+        #verify signatures on all previous order statements in history
         order_stmt = sign.verify_sign(verify_key_hex_map['head'], order_statements[index])
         order_stmt = pickle.loads(order_stmt)
         if order_stmt.slot == slot_number or order_stmt.slot > slot_number:
@@ -139,8 +144,6 @@ class Replica(process):
 
         if verified and not replica_index == 'head':
             for index in range(1, len(order_statements)):
-                output('verofy order stmt', index)
-                #output(order_statements)
                 order_stmt = sign.verify_sign(verify_key_hex_map['replica_' + str(index)], order_statements[index])
                 order_stmt = pickle.loads(order_stmt)
                 if order_stmt.slot == slot_number or order_stmt.slot > slot_number:
@@ -149,6 +152,7 @@ class Replica(process):
         return verified
 
 
+    #check previous order statements for the current operation execution
     def check_previous_statements(unsigned_order_statements, slot, operation):
         verified = True
         output('unsigned order stmt', unsigned_order_statements)
@@ -161,7 +165,7 @@ class Replica(process):
         return verified
 
 
-    #add order statement to order proof contained in the forward shuttle
+    #replica intermediate: add order statement to order proof contained in the forward shuttle
     def add_order_statement(forward_shuttle, operation, replica_index):
         verified = True      
         slot_number += 1
@@ -182,6 +186,7 @@ class Replica(process):
         return verified
 
 
+    #check signature and content of previous order statements for the current operation execution
     def verify_signed_order_statements(order_proof, replica_index, slot_number, operation):
         order_statements = order_proof.statements
         index = 0
@@ -210,8 +215,8 @@ class Replica(process):
                         unsigned_order_statements.append(result)
 
         verified = check_previous_statements(unsigned_order_statements, slot_number, operation)
-        
         return verified
+
 
     def verify_result_proof(result_proof, result):
         #verify hash
@@ -490,3 +495,6 @@ class Replica(process):
 
             output('Replica Head: Sequence number', sequence_number)
         return forward_shuttle
+
+def main():
+    print('Replica main method')

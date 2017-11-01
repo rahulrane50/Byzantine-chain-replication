@@ -296,3 +296,7 @@ class Client(process):
             received_result = True
         elif timeout(client_timeout):
             output('Client', id, ': timed out waiting for result of retransmitted opertion, resending request')
+
+
+def main():
+    print('Client main method')

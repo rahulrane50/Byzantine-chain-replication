@@ -10,6 +10,11 @@ INSTRUCTIONS:
     read input testdata. This can be run as :
     python3 -m da -f -F output --logfilename ../logs/logfile.log --message-buffer-size 65536 -m main_process
 
+    Start nodes of replica, client and olympus on different terminals:
+    python3 -m da -f -F output --logfilename /home/rasika/Documents/Asynchronous\ Systems/Phase\ 2/asyncbcr/logs/logfile.log --message-buffer-size 65536 --cookie SECRET -D -n OlympusNode -m olympus
+    python3 -m da -f -F output --logfilename /home/rasika/Documents/Asynchronous\ Systems/Phase\ 2/asyncbcr/logs/logfile.log --message-buffer-size 65536 --cookie SECRET -D -n ReplicasNode -m replica
+    python3 -m da -f -F output --logfilename /home/rasika/Documents/Asynchronous\ Systems/Phase\ 2/asyncbcr/logs/logfile.log --message-buffer-size 65536 --cookie SECRET -D -n ClientsNode -m client
+
 WORKLOAD GENERATION:
     For workload generation, the process reads the workload given in either testing.json or config.txt
     It is stored as a list in the properties map for client. Index into the list gives workload for the respective client.

@@ -5,6 +5,7 @@ config(channel is fifo, clock is lamport)
 
 replica = import_da('replica')
 client  = import_da('client')
+config_file = import_da('read_config_file')
 
 def generate_pub_priv_keys():
     priv_key = PrivateKey.generate()
@@ -129,8 +130,5 @@ class Olympus(process):
             start(configuration['replica_' + str(index)])    
 
 
-#def main():
-    #Olympus can create all public and private keys for clients and replicas and send them to the relevant processes.
-    
-    # olympus = new(Olympus, [no_of_replicas, num_clients], num=1)
-    # start(olympus)
+def main():
+    print('Olympus main method')

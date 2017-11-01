@@ -19,13 +19,12 @@ def main():
     num_replicas = int(t) * 2 + 1
     client_timeout = int(client_properties['client_timeout'])/1000
 
+    replicas = new(replica.Replica, num=num_replicas, at='ReplicasNode')
 
-    replicas = new(replica.Replica, num=num_replicas)
-
-    olympus_p = new(olympus.Olympus, [1, num_replicas, num_clients, replicas, head_timeout, nonhead_timeout], num=1)
+    olympus_p = new(olympus.Olympus, [1, num_replicas, num_clients, replicas, head_timeout, nonhead_timeout], num=1, at='OlympusNode')
     start(olympus_p)
 
-    clients = new(client.Client, num=num_clients)
+    clients = new(client.Client, num=num_clients, at='ClientsNode')
 
     clients_list = list(clients)
     for index in range(0, num_clients):

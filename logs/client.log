@@ -1,0 +1,27 @@
+[2017-10-31 23:19:58,014] client.Client<Client:f9402#ClientsNode>:OUTPUT: Client 0 : setup
+[2017-10-31 23:19:58,057] client.Client<Client:f9402#ClientsNode>:OUTPUT: Client 0 : running
+[2017-10-31 23:19:58,057] client.Client<Client:f9402#ClientsNode>:OUTPUT: Client 0 :requesting configuration from Olympus
+[2017-10-31 23:19:58,179] client.Client<Client:f9402#ClientsNode>:OUTPUT: Client 0 :received  configuration from Olympus {'config_0': {'head': <Replica:a6404#ReplicasNode>, 'replica_2': <Replica:a6402#ReplicasNode>, 'replica_3': <Replica:a6403#ReplicasNode>, 'replica_1': <Replica:a6406#ReplicasNode>, 'tail': <Replica:a6405#ReplicasNode>}}
+[2017-10-31 23:19:58,222] client.Client<Client:f9402#ClientsNode>:OUTPUT: Client 0 :received keys from Olympus
+[2017-10-31 23:19:58,226] client.Client<Client:f9402#ClientsNode>:OUTPUT: Client 0 :received signing keys from Olympus
+[2017-10-31 23:19:58,227] client.Client<Client:f9402#ClientsNode>:OUTPUT: Testcase : testcase_1
+[2017-10-31 23:19:58,227] client.Client<Client:f9402#ClientsNode>:OUTPUT: Description : For single client and single put operation check for result.
+[2017-10-31 23:19:58,227] client.Client<Client:f9402#ClientsNode>:OUTPUT: Expected results : Client must receive result before timeout and expected dict at the end of workload must match with actual results.
+[2017-10-31 23:19:58,227] client.Client<Client:f9402#ClientsNode>:OUTPUT: Expected dict : {'movie': 'star'}
+[2017-10-31 23:19:58,228] client.Client<Client:f9402#ClientsNode>:OUTPUT: client workload : ["put('movie','star')", "get('movie')"]
+[2017-10-31 23:19:58,253] client.Client<Client:f9402#ClientsNode>:OUTPUT: Client 0 received result shuttle <messages.Proof object at 0x7f16203af1d0> OK
+[2017-10-31 23:19:58,254] client.Client<Client:f9402#ClientsNode>:OUTPUT: Client 0 : Result: OK received and verified for operation, put('movie','star')
+[2017-10-31 23:19:58,257] client.Client<Client:f9402#ClientsNode>:OUTPUT: Client 0 received result shuttle <messages.Proof object at 0x7f16203af2b0> star
+[2017-10-31 23:19:58,258] client.Client<Client:f9402#ClientsNode>:OUTPUT: Client 0 : Result: star received and verified for operation, get('movie')
+[2017-10-31 23:19:58,258] client.Client<Client:f9402#ClientsNode>:OUTPUT: await exec  False
+[2017-10-31 23:19:58,258] client.Client<Client:f9402#ClientsNode>:OUTPUT: result received
+[2017-10-31 23:19:58,258] client.Client<Client:f9402#ClientsNode>:ERROR: Unrecoverable error in DistAlgo process: EOFError('Ran out of input',)
+Traceback (most recent call last):
+  File "/home/rasika/.local/lib/python3.5/site-packages/da/sim.py", line 159, in _delayed_start
+    return self.run()
+  File "/home/rasika/Documents/Asynchronous Systems/Phase 2/asyncbcr/src/client.py", line 245, in run
+    verified = verify_expected_result(self._state.id, expected_dict)
+  File "/home/rasika/Documents/Asynchronous Systems/Phase 2/asyncbcr/src/client.py", line 81, in verify_expected_result
+    actual_dict = pickle.load(testing_file)
+EOFError: Ran out of input
+[2017-10-31 23:24:16,865] da.api<MainProcess>:WARNING: Received keyboard interrupt. 
