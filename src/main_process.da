@@ -6,8 +6,10 @@ config_file = import_da('read_config_file')
 
 
 def main():
+    test_file_name = sys.argv[1]
+
     config_file.read_config_file()
-    testing_scenarios = config_file.get_testing_file()
+    testing_scenarios = config_file.get_testing_file(test_file_name)
     olympus_properties = config_file.get_olympus_properties()
     client_properties = config_file.get_client_properties()
 
@@ -28,5 +30,5 @@ def main():
 
     clients_list = list(clients)
     for index in range(0, num_clients):
-        setup(clients_list[index], (client_timeout, index, olympus_p))
+        setup(clients_list[index], (client_timeout, index, olympus_p, testing_scenarios))
         start(clients_list[index])

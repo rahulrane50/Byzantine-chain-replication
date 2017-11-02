@@ -32,6 +32,7 @@ def separate_properties():
     client_properties['client_hosts'] = config['client_hosts']
     client_properties['workload'] = []
 
+
     for key in config:
         if key.startswith('workload'):
             client_properties['workload'].append(config[key])
@@ -49,6 +50,7 @@ def separate_properties():
                 failure_error = failure[-1].replace(" ", "")
                 failures_scenario_properties['config_' + config_id]['replica_'+replica_id].append([tuple, failure_trigger, failure_error])
 
+
 def get_client_properties():
     return client_properties
 
@@ -56,11 +58,13 @@ def get_client_properties():
 def get_olympus_properties():
     return olympus_properties
 
+
 def get_failure_scenario_properties():
     return failures_scenario_properties
 
-def get_testing_file():
-    with open('../testing.json') as data_file:
+
+def get_testing_file(test_file_name):
+    with open(test_file_name) as data_file:
         data = json.load(data_file)
     return data
 

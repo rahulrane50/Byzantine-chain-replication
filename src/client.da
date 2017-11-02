@@ -52,6 +52,10 @@ def get_workload(workload):
             client_workload.append(pseudorandom(int(values[0].strip()), int(values[1].strip())))
         else:
             client_workload.append([operation.strip() for operation in workload[index].split(';')])
+    # for op in client_workload:
+    #     if not op:
+    #         client_workload.remove(op)
+    #     print("######## operation", op)
     return client_workload
 
 
@@ -99,7 +103,7 @@ def check_timeout(client_timeout, reset=False):
 
 
 class Client(process):
-    def setup(client_timeout:int, id: int, olympus:olympus.Olympus):
+    def setup(client_timeout:int, id: int, olympus:olympus.Olympus, testing_scenarios:dict):
         output('Client', id, ': setup')
         self.configuration = {}
         self.public_key_map = {}
@@ -114,7 +118,7 @@ class Client(process):
         #read file only once and get from there, later
         self.client_properties = read_properties()
         #self.client_workload = []
-        self.testing_scenarios = config_file.get_testing_file()
+        # self.testing_scenarios = config_file.get_testing_file()
 
     def run():
         output('Client', id, ': running')
@@ -149,25 +153,28 @@ class Client(process):
                 client_workload = get_workload(client_properties['workload'])[0]
             output("client workload :", client_workload)
             for operation in client_workload:
-                signed_operation = sign.sign_msg(signing_key, operation)
-                encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
-                retransmit_req = False
-                retransmit=val.get("retransmit_request")
-                if retransmit:
-                    if id == retransmit[0] and sequence_number == retransmit[1]:
-                        retransmit_req = True
-                send(('ClientRequest', encrypted_operation, operation_hex, sequence_number, id, retransmit_req,), to=configuration['config_0']['head'])
-                requests_info[(id, sequence_number)] = time.time()
-                sequence_number += 1
-                if perform_op:
-                    result = operations.perform_operation(operation, expected_dict)
+                if not operation == '':
+                    signed_operation = sign.sign_msg(signing_key, operation)
+                    encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
+                    retransmit_req = False
+                    retransmit=val.get("retransmit_request")
+                    if retransmit:
+                        if id == retransmit[0] and sequence_number == retransmit[1]:
+                            retransmit_req = True
+                    send(('ClientRequest', encrypted_operation, operation_hex, sequence_number, id, retransmit_req,), to=configuration['config_0']['head'])
+                    requests_info[(id, sequence_number)] = time.time()
+                    sequence_number += 1
+                    if perform_op:
+                        result = operations.perform_operation(operation, expected_dict)
             
             if await(check_timeout(client_timeout)[0] or (len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload))):
                 timed_out, seqno = check_timeout(client_timeout, reset=True)
-                output('await exec ', timed_out)
                 if timed_out:
                     output("Operation having seqno ",seqno, " timed out hence retransmitting")
-                    retransmit_request(operation, seqno)
+                    received_result = retransmit_request(operation, seqno)
+                    while(not received_result):
+                        output("Client ", id, "timed out again while waiting for result of operation,", operation, ". Retransmitting..")
+                        received_result = retransmit_request(operation, seqno)
                 else:
                     output('result received')
             elif timeout(client_timeout):
@@ -296,6 +303,9 @@ class Client(process):
             received_result = True
         elif timeout(client_timeout):
             output('Client', id, ': timed out waiting for result of retransmitted opertion, resending request')
+
+        return received_result
+
 
 
 def main():

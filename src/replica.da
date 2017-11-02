@@ -21,6 +21,10 @@ read_config_file = import_da('read_config_file')
 def handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties, failure_trigger,
 config_id='config_0'):
     failure_error = None
+    #all failures from config file are commented
+    if len(failure_scenario_properties) == 0:
+        return failure_error
+
     tuple = str(client_id) + ',' + str(sequence_number)
     if replica_id in failure_scenario_properties[config_id].keys():
         for tuples in failure_scenario_properties[config_id][replica_id]:
@@ -41,11 +45,13 @@ def handle_failure_error(failure_error):
         print("Unhandled failure error scenario")
     return failure_error_dict
 
+
 def dump_expected_result(dictionary, client_id):
     fname = "testcase_" + str(client_id) + "_result.txt"
     testing_file = open(fname, "wb")
     pickle.dump(dictionary, testing_file, pickle.HIGHEST_PROTOCOL)
     testing_file.close()
+
 
 def verify_result_statement(verify_key, statement, hashed_result):
     verified = True
@@ -60,6 +66,7 @@ def verify_result_statement(verify_key, statement, hashed_result):
         output('Client ', id, ': The hash of result did not match')
         verified = False
     return verified
+
 
 class Replica(process):
     #setup replica
@@ -314,7 +321,8 @@ class Replica(process):
             elif failure_error_dict['drop_result']:
                 output("Injecting drop head result statement failure.")
                 result_shuttle.result_proof.statements.pop(0)
-        
+
+
         #Validate order proof with previous
         verified = verify_result_proof(result_shuttle.result_proof, result)
         if not verified:
@@ -334,7 +342,7 @@ class Replica(process):
                 output('Replica', replica_id ,': Sent result shuttle to head')
             else:
                 send(('ResultShuttle', result_shuttle, result, sequence_number, client_id,), to=config['replica_' + str(my_index - 1)])
-                output('Replica', replica_id ,': Sent result shuttle to', 'replica_' + str(len(config) - 2))
+                output('Replica', replica_id ,': Sent result shuttle to', 'replica_' + str(my_index - 1))
 
 
     #Intermediate replicas
@@ -416,6 +424,7 @@ class Replica(process):
             output('Replica', replica_id, 'Incorrect behaviour was detected. Send reconfiguration request to Olympus')
 
 
+    #handler for retransmitted request from client after timeout
     def receive(msg=('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, client_id), from_=client):
         if mode == 'IMMUTABLE':
             output('Replica', replica_id, 'is Immutable. Sending error statement to client')
@@ -427,11 +436,11 @@ class Replica(process):
         output('Replica', replica_id, ': and cache is', cache)
         result = cache.get(str(client_id) + '_' + str(sequence_number))
 
-        if not result == None:
+        if not result == None:  #if the result is present in cache, send to client
             result_proof = result[0].result_proof
             output('Replica', replica_id, ': sending result for retransmitted request with sequence number', sequence_number)
             send(('RetransmitResult', result_proof, result[1], str(client_id) + '_' + str(sequence_number) + '_' + 'resent', operation), to=client)
-        elif result == None and not replica_id == 'head':
+        elif result == None and not replica_id == 'head': #if result not found in cache, forward to head
             output('Replica', replica_id, 'did not find result cached. Forwarding request to head..')
             send(('ForwardRequest', operation, sequence_number, client_id, client, replica_id), to=config['head'])
             inprogress_operations[(client_id, sequence_number, operation)]  = time.time()
@@ -444,6 +453,11 @@ class Replica(process):
             elif timeout(nonhead_timeout/1000):
                 output('Replica', replica_id,'timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..')
 
+    def get_result(client_id, sequence_number):
+        result = cache.get(str(client_id) + '_' + str(sequence_number))
+        if not result == None:
+            return True
+        return False
 
     #handler for requests retransmitted requests forwarded from other replicas to head
     def receive(msg=('ForwardRequest', operation, sequence_number, client_id, client, replica_id), from_=replica):
@@ -451,26 +465,40 @@ class Replica(process):
         result = cache.get(str(client_id) + '_' + str(sequence_number))
         timed_out = False
         found = False
+        timer_started = False
+        reconfig = False
         if not result == None:
             result_proof = result[0].result_proof
             output('Replica', replica_id, ': sending result for retransmitted request with sequence number', sequence_number)
             send(('RetransmitResult', result_proof, result[1], str(client_id) + '_' + str(sequence_number) + '_' + 'resent', operation), to=client)
         else:
             for order_proof in history:
-                if order_proof.operation == operation and not count > 0:
+                try:
+                    value = inprogress_operations[(client_id, sequence_number, operation)]
+                    if not value == 0:
+                        timer_started = True
+                except KeyError:
+                    timer_started = False
+
+                if order_proof.operation == operation and not timer_started:
                     output('Replica head: previously started', operation, 'at', order_proof.slot, '. Waiting for result. Starting timer on request from replica', replica_id)
                     inprogress_operations[(client_id, sequence_number, operation)]  = time.time()
-                    count +=1
                     #poll timeout here
-                    if await(not result == None):
+                    if await(get_result(client_id, sequence_number)):
+                        result = cache.get(str(client_id) + '_' + str(sequence_number))
+                        result_proof = result[0].result_proof
+                        output('#### Received result in head after failure', result)
                         send(('RetransmitResult', result_proof, result[1], str(client_id) + '_' + str(sequence_number) + '_' + 'resent', operation), to=client)
                         found = True
                         break
                     elif timeout(head_timeout/1000):
                         output('Replica head timed out waiting for the result shuttle in retransmission. Sending reconfig request..')
-                elif count > 0:
+                        timer_started = False
+                        reconfig = True
+                elif timer_started:
                     output('Replica head: Already started timer for this retransmission request, ignoring the request from replica', replica_id)
-            if not found:
+            if not found and not reconfig and not timer_started:
+            # if not found:
             #else start the operation from scratch
                 #add operation at the next slot
                 output('starting new operation', operation, 'on request from replica', replica_id)
