@@ -82,6 +82,7 @@ class Replica(process):
         self.history = []
         self.inprogress_operations = {}
         self.count = 0
+        self.request_forwarded = False
 
     #start the replica, it is in continuous wait state
     def run():
@@ -301,11 +302,12 @@ class Replica(process):
                 send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
             elif forward_shuttle == None:
                 output('Replica', replica_id, 'Incorrect behaviour detected. Send reconfiguration request to Olympus')
+                send(('ReconfigurationRequest', 'invalid order proof at head', operation, sequence_number, client_id, replica_id,), to=olympus)
             else:
                 output("Retransmit failure injected hence not sending forward shuttle.")
 
 
-    def receive(msg=('ResultShuttle', result_shuttle, result, sequence_number, client_id,), from_=replica):
+    def receive(msg=('ResultShuttle', result_shuttle, result, sequence_number, client_id, operation, ), from_=replica):
         output('Replica :', replica_id, 'result shuttle received from previous replica :', result_shuttle)
         if replica_id != 'head':
             my_index = int(replica_id.split('_')[1])
@@ -327,6 +329,7 @@ class Replica(process):
         verified = verify_result_proof(result_shuttle.result_proof, result)
         if not verified:
             output('Replica', replica_id, 'Result proof received is invalid sending reconfig request to olympus')
+            send(('ReconfigurationRequest', 'invalid result proof', operation, sequence_number, client, replica_id,), to=olympus)
         else:
             output('Replica', replica_id, 'Result proof validated successfully')
 
@@ -338,12 +341,21 @@ class Replica(process):
             if replica_id == 'head':
                 return
             elif (replica_id == 'replica_1'):
-                send(('ResultShuttle', result_shuttle, result, sequence_number, client_id,), to=config['head'])
+                send(('ResultShuttle', result_shuttle, result, sequence_number, client_id, operation, ), to=config['head'])
                 output('Replica', replica_id ,': Sent result shuttle to head')
             else:
-                send(('ResultShuttle', result_shuttle, result, sequence_number, client_id,), to=config['replica_' + str(my_index - 1)])
+                send(('ResultShuttle', result_shuttle, result, sequence_number, client_id, operation, ), to=config['replica_' + str(my_index - 1)])
                 output('Replica', replica_id ,': Sent result shuttle to', 'replica_' + str(my_index - 1))
 
+            # this checks if the current operation was retransmitted from the client
+            # if yes, this replica will send the result to the client
+            try:
+                value = inprogress_operations[(client_id, sequence_number, operation)]
+                # client = config[client_id]
+                output('Replica', replica_id, ': sending result for retransmitted request with sequence number', sequence_number)
+                send(('RetransmitResult', result_shuttle.result_proof, result, str(client_id) + '_' + str(sequence_number) + '_' + 'resent', operation, ), to=config[client_id])
+            except KeyError:
+                pass
 
     #Intermediate replicas
     def receive(msg=('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), from_=replica):
@@ -380,6 +392,7 @@ class Replica(process):
                 send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_' + str(my_index + 1)])
         else:
             output('Replica', replica_id, 'Incorrect behaviour was detected. Send reconfiguration request to Olympus')
+            send(('ReconfigurationRequest', 'invalid order proof', operation, sequence_number, client_id, replica_id,), to=olympus)
 
 
     #Tail Replica
@@ -417,11 +430,12 @@ class Replica(process):
             output('Replica', replica_id, ': cached result:', cache)
 
             #send the shuttle in the reverse direction
-            send(('ResultShuttle', forward_shuttle, result, sequence_number, client_id,), to=config['replica_' +
+            send(('ResultShuttle', forward_shuttle, result, sequence_number, client_id, operation, ), to=config['replica_' +
             str(len(config) - 2)])
             output('Replica', replica_id ,': Sent result shuttle to', 'replica_' + str(len(config) - 2))
         else:
             output('Replica', replica_id, 'Incorrect behaviour was detected. Send reconfiguration request to Olympus')
+            send(('ReconfigurationRequest', 'invalid order proof at tail', operation, sequence_number, client_id, replica_id,), to=olympus)
 
 
     #handler for retransmitted request from client after timeout
@@ -452,12 +466,15 @@ class Replica(process):
                 #break
             elif timeout(nonhead_timeout/1000):
                 output('Replica', replica_id,'timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..')
+                send(('ReconfigurationRequest', 'timeout at intermediate replica in retransmitted request', operation, sequence_number, client_id, replica_id,), to=olympus)
+
 
     def get_result(client_id, sequence_number):
         result = cache.get(str(client_id) + '_' + str(sequence_number))
         if not result == None:
             return True
         return False
+
 
     #handler for requests retransmitted requests forwarded from other replicas to head
     def receive(msg=('ForwardRequest', operation, sequence_number, client_id, client, replica_id), from_=replica):
@@ -495,6 +512,8 @@ class Replica(process):
                         output('Replica head timed out waiting for the result shuttle in retransmission. Sending reconfig request..')
                         timer_started = False
                         reconfig = True
+                        send(('ReconfigurationRequest', 'timeout', operation, sequence_number, client_id, replica_id,), to=olympus)
+                        break
                 elif timer_started:
                     output('Replica head: Already started timer for this retransmission request, ignoring the request from replica', replica_id)
             if not found and not reconfig and not timer_started:

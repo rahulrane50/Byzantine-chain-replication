@@ -103,6 +103,11 @@ class Olympus(process):
             send(('OlympusRequest', anymsg), to=replica)
 
 
+    def receive(msg=('ReconfigurationRequest', reason, operation, sequence_number, client, replica_id,), from_=replica):
+        output('Olympus: Received reconfiguration request from', replica_id, 'for ', reason, 'in operation ', operation, 'from client ', client)
+
+
+
     def create_replica_config(list_of_replicas):
         configuration['config_0']['head'] = list_of_replicas[0]
         configuration['config_0']['tail'] = list_of_replicas[-1]
