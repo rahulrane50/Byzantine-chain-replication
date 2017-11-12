@@ -4,6 +4,7 @@ import nacl.hash
 import nacl.signing
 import pickle
 import time
+from math import floor
 from nacl.bindings.utils import sodium_memcmp
 
 config(clock is lamport)
@@ -52,22 +53,6 @@ def dump_expected_result(dictionary, client_id):
     pickle.dump(dictionary, testing_file, pickle.HIGHEST_PROTOCOL)
     testing_file.close()
 
-
-def verify_result_statement(verify_key, statement, hashed_result):
-    verified = True
-    result_statement = None
-    verified_result_statement = sign.verify_sign(verify_key, statement)
-    if verified_result_statement == None:
-        verified = False
-        return verified
-    if verified:
-        result_statement = pickle.loads(verified_result_statement)
-    if not sodium_memcmp(hashed_result, result_statement.result_hash):
-        output('Client ', id, ': The hash of result did not match')
-        verified = False
-    return verified
-
-
 class Replica(process):
     #setup replica
     #set the replica id, public and private keys
@@ -83,19 +68,131 @@ class Replica(process):
         self.inprogress_operations = {}
         self.count = 0
         self.request_forwarded = False
+        
+        # time in seconds after which head initiates checkpoint, periodically
+        self.checkpoint_time = 30
+        #store latest checkpoint proof, this will be included in the wedged statement
+        self.checkpoint_proof = None
+        self.state_to_save = {}
+        self.latest_checkpoint_proof = None
+
+    """""""""""""""""""""
+        Checkpointing
+    """""""""""""""""""""
+    # calculate hash of the running state (i.e. current contents of the dictionary)
+    # all replicas will do the same, tail will do the same and send the checkpoint shuttle in the reverse direction
+    def initiate_checkpoint():
+        output('Head initiating checkpoint')
+        hashed_running state = sign.generate_hash(pickle.dumps(dictionary))
+
+        checkpoint_statement = messages.CheckpointStatement('checkpoint', hashed_running_state)
+        signed_stmt = sign.sign_msg(signing_key, pickle.dumps(checkpoint_statement))
+
+        checkpoint_proof = messages.Proof(signed_stmt, slot_number, None)
+
+        checkpoint_shuttle = messages.Shuttle(None, 'head', config['replica_1'], None)
+        checkpoint_shuttle.add(checkpoint_proof)
+
+        send(('CheckpointShuttle', checkpoint_shuttle), to=config['replica_1'])
+
+        # always return false to keep the await statement waiting
+        return False
+
+    def delete_history_prefix(checkpoint_proof):
+        slot = checkpoint_proof.slot
+        history = history[slot:]
+        latest_checkpoint_proof = checkpoint_proof
+
+
+    #TO-DO: find if verify_sign is used too many times and make into a method
+    # try to reuse verify_signed_order_statements from line 294
+    def receive(msg=('CheckpointShuttle', checkpoint_shuttle), from_=head):
+        output('Replica', replica_id, 'received checkpoint shuttle from head')
+        verified = True
+        my_index = int(replica_id.split('_')[1])
+        index = 0
+        checkpoint_statements = checkpoint_shuttle.checkpoint_proof.statements
+
+        result = sign.verify_sign(verify_key_hex_map['head'], checkpoint_statements[index])
+        if not result == None:
+            for index in (1, my_index):
+                result = sign.verify_sign(verify_key_hex_map['head'], checkpoint_statements[index])
+                if result == None:
+                    verified = False
+                    break
+        if verified:
+            hashed_running_state = sign.generate_hash(pickle.dumps(state_to_save))
+            checkpoint_statement = messages.CheckpointStatement('checkpoint', hashed_running_state)
+            signed_stmt = sign.sign_msg(signing_key, pickle.dumps(checkpoint_statement))
+            checkpoint_shuttle.checkpoint_proof.add_statement(signed_stmt)
+            if not replica_id == 'tail':
+                send(('CheckpointShuttle', checkpoint_shuttle), to=config['replica_' + str(my_index + 1)])
+        else:
+            output('Replica,' replica_id, 'detected incorrect signature while verifying signature on checkpoint statement.\
+                Sending reconfiguration request')            
+            send(('ReconfigurationRequest', 'invalid checkpoint statement ', None, -1, -1, replica_id,), to=olympus)
+
+        if replica_id == 'tail':
+            output('Replica Tail: completed checkpoint')
+            send(('ReverseCheckpointShuttle', checkpoint_shuttle), to=config['replica_' + str(len(config) - 2)])
+            delete_history_suffix(checkpoint_shuttle.checkpoint_proof)
+
+
+    def receive(msg=('ReverseCheckpointShuttle', checkpoint_shuttle), from_=replica):
+        checkpoint_statements = checkpoint_shuttle.checkpoint_proof.statements
+        verified = True
+
+        #Validate order proof with previous
+        verified = verify_proof(checkpoint_shuttle.checkpoint_proof, pickle.dumps(state_to_save), 'checkpoint')
+
+        # result = verify_sign(verify_key_hex_map['head'], checkpoint_statements[0], hashed_result)
+        # if result == None:
+        #     verified = False
+
+        # index = 1
+        # for statement in checkpoint_statements[1:-1]:
+        #     result = verify_sign(verify_key_hex_map['replica_'+str(index)], statement, hashed_result)
+        #     if result == None:
+        #         verfied = False
+        #         break
+        #     index += 1
+        # result = verify_sign(verify_key_hex_map['tail'], result_statements[-1], hashed_result)
+        # if result == None:
+        #     verified = False
+
+        if not verified:
+            output('Replica,' replica_id, 'detected incorrect signature while verifying signature on checkpoint statement.\
+                Sending reconfiguration request')
+            send(('ReconfigurationRequest', 'invalid checkpoint statement ', None, -1, -1, replica_id,), to=olympus)
+        else:
+            #send checkpoint shuttle to the previous replica
+            if replica_id == 'head':
+                return
+            elif (replica_id == 'replica_1'):
+                send(('ReverseCheckpointShuttle', checkpoint_shuttle), to=config['head'])
+                delete_history_suffix(checkpoint_shuttle.checkpoint_proof)
+            else:
+                send(('ReverseCheckpointShuttle', checkpoint_shuttle), to=config['replica_' + str(my_index - 1)])
+                delete_history_suffix(checkpoint_shuttle.checkpoint_proof)
+
 
     #start the replica, it is in continuous wait state
     def run():
+        start_time = time.time()
         output('Replica:', replica_id,'started in', mode, 'mode')
-        failure_scenario_properties = read_config_file.get_failure_scenario_properties() 
+        failure_scenario_properties = read_config_file.get_failure_scenario_properties()
+
+        # await(initiate_checkpoint(start_time))
         await(False)
-        output("out of await")
 
     """""""""""""""""""""""""""
         Methods for shuttles
     """""""""""""""""""""""""""
     #replica head: add operation at that slot
     def order_operation(operation, client):
+        if slot_number % 10 == 0:
+            initiate_checkpoint()
+
         forward_shuttle = None
         slot_number = slot_number + 1
         verified = check_history(history, slot_number, operation, replica_id)
@@ -175,11 +272,14 @@ class Replica(process):
 
     #replica intermediate: add order statement to order proof contained in the forward shuttle
     def add_order_statement(forward_shuttle, operation, replica_index):
-        verified = True      
+        if slot_number % 10 == 0:
+            state_to_save = dictionary
+
+        verified = True
         slot_number += 1
         verified = check_history(history, slot_number, operation, replica_index)
         if verified:
-            verified = verify_signed_order_statements(forward_shuttle.order_proof, replica_index, slot_number, operation)        
+            verified = verify_signed_order_statements(forward_shuttle.order_proof, replica_index, slot_number, operation)
         if verified:
             output('Replica', replica_id, ': successfully verified previous order statements')
             order_statement = messages.OrderStatement('order', slot_number, operation)
@@ -226,24 +326,39 @@ class Replica(process):
         return verified
 
 
-    def verify_result_proof(result_proof, result):
+    def verify_statement(verify_key, signed_statement, hashed_result):
+        verified = True
+        statement = None
+        verified_statement = sign.verify_sign(verify_key, signed_statement)
+        if verified_statement == None:
+            verified = False
+            return verified
+        if verified:
+            statement = pickle.loads(verified_statement)
+        if not sodium_memcmp(hashed_result, statement.hash):
+            output('Replica ', replica_id, ': The hash of objects did not match')
+            verified = False
+        return verified
+
+
+    def verify_proof(proof, result, type):
         #verify hash
-        hashed_result = sign.generate_hash(result.encode('ascii'))
-        result_statements = result_proof.statements
+        hashed_result = sign.generate_hash(result)
+        statements = proof.statements
         verified = True
 
-        output('Replica', replica_id, 'Verifying result proof')
-        verified = verify_result_statement(verify_key_hex_map['head'], result_statements[0], hashed_result)
+        output('Replica', replica_id, 'Verifying', type, 'proof')
+        verified = verify_statement(verify_key_hex_map['head'], statements[0], hashed_result)
         if not verified:
             return False
 
         index = 1
-        for statement in result_statements[1:-1]:
-            verified = verify_result_statement(verify_key_hex_map['replica_'+str(index)], statement, hashed_result)
+        for statement in statements[1:-1]:
+            verified = verify_statement(verify_key_hex_map['replica_'+str(index)], statement, hashed_result)
             if not verified:
                 break
             index += 1
-        verified = verify_result_statement(verify_key_hex_map['tail'], result_statements[-1], hashed_result)
+        verified = verify_statement(verify_key_hex_map['tail'], statements[-1], hashed_result)
         return verified
 
 
@@ -277,6 +392,10 @@ class Replica(process):
     """""""""""""""""""""""""""
     #Head Replica
     def receive(msg=('ClientRequest', encrypted_operation, operation_hex, sequence_number, client_id,retransmit_req, ), from_=client):
+        if mode == 'IMMUTABLE':
+            output('Replica head: Immutable, sending error to client')
+            send(('ErrorStatement', replica_id,), to=client)
+
         replica_box = Box(priv_key, public_key_map['client_'+ str(client_id)])
 
         #verify that the operation really came from that particular client
@@ -326,7 +445,7 @@ class Replica(process):
 
 
         #Validate order proof with previous
-        verified = verify_result_proof(result_shuttle.result_proof, result)
+        verified = verify_proof(result_shuttle.result_proof, result.encode('ascii'), 'result')
         if not verified:
             output('Replica', replica_id, 'Result proof received is invalid sending reconfig request to olympus')
             send(('ReconfigurationRequest', 'invalid result proof', operation, sequence_number, client, replica_id,), to=olympus)
@@ -442,6 +561,8 @@ class Replica(process):
     def receive(msg=('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, client_id), from_=client):
         if mode == 'IMMUTABLE':
             output('Replica', replica_id, 'is Immutable. Sending error statement to client')
+            send(('ErrorStatement', replica_id,), to=client)
+
 
         replica_box = Box(priv_key, public_key_map['client_' + str(client_id)])
         
@@ -476,7 +597,7 @@ class Replica(process):
         return False
 
 
-    #handler for requests retransmitted requests forwarded from other replicas to head
+    #handler for retransmitted requests forwarded from other replicas to head
     def receive(msg=('ForwardRequest', operation, sequence_number, client_id, client, replica_id), from_=replica):
         output('Replica head received forwarded retransmitted request from Replica', replica_id)
         result = cache.get(str(client_id) + '_' + str(sequence_number))
@@ -542,6 +663,7 @@ class Replica(process):
 
             output('Replica Head: Sequence number', sequence_number)
         return forward_shuttle
+
 
 def main():
     print('Replica main method')

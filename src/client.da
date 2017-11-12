@@ -120,13 +120,18 @@ class Client(process):
         #self.client_workload = []
         # self.testing_scenarios = config_file.get_testing_file()
 
-    def run():
-        output('Client', id, ': running')
-        
+    def get_configuration():
         #get the current configuration from Olympus
         output('Client', id, ':requesting configuration from Olympus')
         send(('GetConfiguration', id), to=olympus)
         await(some(received(('Configuration', configuration,))))
+
+
+    def run():
+        output('Client', id, ': running')
+
+        #get the current configuration from Olympus
+        get_configuration()
 
         send(('GetKeys', id), to=olympus)
         await(some(received(('Keys', public_key_map, priv_key,))))
@@ -187,6 +192,7 @@ class Client(process):
                 output("Actual result matching with expected result")
             else:
                 output("Actual result not macthing with expected result")
+
 
     def synchronous_operations():
         for operation in client_workload:
@@ -265,6 +271,13 @@ class Client(process):
         else:
             output("Result statement of replica :",  'replica_' + str(index), " is not verified hence retransmitting.")
             retransmit_request(result_statement.operation, identifier.split('_')[1])
+
+
+    # replicas reply with error statement if they are immutable
+    def receive(msg=('ErrorStatement', replica_id,), from_=replica):
+        output('Client ', id, 'received error statement from replica', replica_id)
+        # get new configuration from olympus
+        get_configuration()
 
 
     def receive(msg=('Keys', key_map, key), from_=olympus):

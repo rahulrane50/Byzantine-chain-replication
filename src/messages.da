@@ -26,9 +26,12 @@ class Proof:
 class ResultStatement():
     def __init__(self, type, result, hash, operation):
         self.result = result
-        self.result_hash = hash
+        self.hash = hash
         self.operation = operation
 
+class CheckpointStatement():
+    def __init__(hash):
+        self.hash = hash
 
 class Shuttle:
     #slot = 0
@@ -40,10 +43,13 @@ class Shuttle:
         self.result_proof = ''
         # Shuttle.slot += 1
         # self.slot_number = slot_number
-
+        self.checkpoint_proof = ''
 
     def add_result_proof(self, result_proof):
         self.result_proof = result_proof
+
+    def add_checkpoint_proof(self, checkpoint_proof):
+    self.checkpoint_proof = checkpoint_proof
 
     def update_sender(self, sender):
         self.sender = sender
