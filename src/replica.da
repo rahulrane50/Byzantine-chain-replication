@@ -83,7 +83,7 @@ class Replica(process):
     # all replicas will do the same, tail will do the same and send the checkpoint shuttle in the reverse direction
     def initiate_checkpoint():
         output('Head initiating checkpoint')
-        hashed_running state = sign.generate_hash(pickle.dumps(dictionary))
+        hashed_running_state = sign.generate_hash(pickle.dumps(dictionary))
 
         checkpoint_statement = messages.CheckpointStatement('checkpoint', hashed_running_state)
         signed_stmt = sign.sign_msg(signing_key, pickle.dumps(checkpoint_statement))
