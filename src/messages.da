@@ -47,3 +47,16 @@ class Shuttle:
 
     def update_sender(self, sender):
         self.sender = sender
+
+class ReconfigurationRequest():
+    def __init__(self, configurationID, slot, operation, misbehavingProcessID):
+        self.configurationID = configurationID,
+        self.slot = slot,
+        self.operation = operation, 
+        self.misbehavingProcessID = misbehavingProcessID,
+       
+class WedgeStatement():
+    def __init__(self, history, checkpoint_proof, runningState):
+        self.history = history
+        self.checkpoint_proof = checkpoint_proof
+        self.runningState = runningState

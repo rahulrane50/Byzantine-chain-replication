@@ -507,6 +507,11 @@ class Replica(process):
                 send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
 
 
+    def receive(msg=('WedgeRequest', signedWedgeRequest), from_=olympus):
+        wedgeStatement = WedgeStatement(history, checkpoing_proof, dictionary)
+        signedWedgeStatement = sign.sign_msg(signing_key, pickle.dumps(wedgeStatement))
+        send(('WedgeStatement', signedWedgeStatement,), to=olympus)
+    
     def start_new_operation(operation, client, client_id, sequence_number):
         #add operation at the next slot
         forward_shuttle = None

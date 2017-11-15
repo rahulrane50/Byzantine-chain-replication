@@ -67,6 +67,13 @@ class Olympus(process):
         #output("signing key map :", signing_key_map)
         #output("verifying key hex map :", verify_key_hex_map)
 
+    def validate_history(histories):
+        return True
+
+    def create_catchup_statement(longest_running_hist, history):
+        catchup_statement = []
+        for order_proof in longest_running_hist:
+            
     def run():
         """Create configuration of replicas, and start them"""
         configuration['config_0'] = create_replica_config(list(set_of_replicas))
@@ -102,6 +109,25 @@ class Olympus(process):
         if(replica == configuration['config_0']['head']):
             send(('OlympusRequest', anymsg), to=replica)
 
+    def receive(msg=('ReconfigurationRequest', reconfig_request,), from_=replica):
+        output("Reconfiguration request received from replica :", reconfig_request.issuerID)
+        wedgeRequest = WedgeRequest(reconfig_request.issuerID)
+        signedWedgeRequest = sign.sign_msg(signing_key_map['olympus'], pickle.dumps(wedgeRequest))
+       
+        for replica in configuration['config_0'].keys():
+            send(('WedgeRequest', signedWedgeRequest), to=replica)
+
+    def receive(msg=('WedgeStatement', signedWedgeStatements,), from_=replica):
+        verified = validate_history(signedWedgeStatements)
+       
+        longest_running_hist = []
+        for history in singedWedgeStatements.histories:
+            if len(history)  > len(longest_running_hist):
+                longest_running_hist = history
+        
+        for history in signedWedgeStatement.histories:
+            catchup_statement = create_catchup_statement(longest_running_hist, history)
+            #send catchup statement
 
     def create_replica_config(list_of_replicas):
         configuration['config_0']['head'] = list_of_replicas[0]
