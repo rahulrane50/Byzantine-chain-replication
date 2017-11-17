@@ -131,7 +131,6 @@ class Replica(process):
             result = process_checkpoint_shuttle(checkpoint_shuttle, s_replica_id)
             output('Received result', result, 'after processing checkpoint shuttle', replica_id)
 
-
     def process_checkpoint_shuttle(checkpoint_shuttle, s_replica_id):
         verified = True
         if not replica_id == 'tail':
@@ -488,7 +487,9 @@ class Replica(process):
         verified = verify_proof(result_shuttle.result_proof, result.encode('ascii'), 'result')
         if not verified:
             output('Replica', replica_id, 'Result proof received is invalid sending reconfig request to olympus')
-            send(('ReconfigurationRequest', 'invalid result proof', operation, sequence_number, client, replica_id,), to=olympus)
+            send(('ReconfigurationRequest', 'invalid result proof', operation, sequence_number, client_id,
+            replica_id, ), to=olympus)
+            #send(('ReconfigurationRequest', 'invalid checkpoint statement ', None, -1, -1, replica_id,), to=olympus)
         else:
             output('Replica', replica_id, 'Result proof validated successfully')
 
@@ -520,6 +521,10 @@ class Replica(process):
     def receive(msg=('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), from_=replica):
         output('Replica Intermediate:', replica_id, 'shuttle received from previous replica :', forward_shuttle)
         my_index = int(replica_id.split('_')[1])        
+
+        # check if any checkpoint shuttle is cached, if yes process it
+        
+
 
         #Check for failure trigger condition
         failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties,'forwarded_request')
@@ -703,13 +708,26 @@ class Replica(process):
                 #send the forward shuttle, result shuttle to the next replica
                 send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
 
-
     def receive(msg=('WedgeRequest'), from_=olympus):
         mode = 'IMMUTABLE'
         wedged_statement = messages.WedgedStatement('WedgedStatement', history, latest_checkpoint_proof, dictionary)
         signed_wedged_statement = sign.sign_msg(signing_key, pickle.dumps(wedged_statement))
+        output("Replica ", replica_id, ": sending wedge statement to olympus.")
         send(('WedgedStatement', signed_wedged_statement, replica_id,), to=olympus)
-
+   
+    def receive(msg=('CatchupStatement', catchup_statement), from_=olympus):
+        output("Replica ", replica_id, ":Recevied catchup statement :", catchup_statement)
+        output("Before: State of dictionary :", dictionary)
+        for order_proof in catchup_statement:
+            result = operations.perform_operation(order_proof.operation, dictionary)
+        output('State of dictionary :', dictionary)
+        hashed_running_state = sign.generate_hash(pickle.dumps(dictionary))
+        output("Replica ", replica_id, " sending caughtup statement to olympus")
+        send(('CaughtupStatement', hashed_running_state, replica_id), to=olympus)
+ 
+    def receive(msg=('GetRunningState'), from_=olympus):
+        output("Replica ", replica_id, " received getrunning state request from olympus.")
+        send(('RunningState', dictionary, replica_id), to=olympus)
 
     def start_new_operation(operation, client, client_id, sequence_number):
         #add operation at the next slot
@@ -727,7 +745,6 @@ class Replica(process):
 
             output('Replica Head: Sequence number', sequence_number)
         return forward_shuttle
-
 
 def main():
     print('Replica main method')

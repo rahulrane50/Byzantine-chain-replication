@@ -152,6 +152,8 @@ class Client(process):
                 output("Expected dict :", val["expected_dict"])
                 perform_op = False
                 expected_dict = val["expected_dict"]
+            else:
+                expected_dict = {}
             if val.get('workload'):
                 client_workload = get_workload(val["workload"])[0]
             else:
