@@ -6,6 +6,7 @@ import pickle
 import time
 from math import floor
 from nacl.bindings.utils import sodium_memcmp
+import datetime
 
 config(clock is lamport)
 
@@ -110,6 +111,7 @@ class Replica(process):
             output('Replica', replica_id, ': slot, op', history[index].slot, history[index].operation)
         history = history[slot:]
         latest_checkpoint_proof = checkpoint_proof
+        output('Replica', replica_id,' latest checkpoint proof: ', latest_checkpoint_proof)
         output('Replica', replica_id,'Current length of history: ', len(history), ' current history::', history)
         for index in range(0, len(history)):
             output('Replica', replica_id, ': slot, op', history[index].slot, history[index].operation)
@@ -125,7 +127,7 @@ class Replica(process):
             cached_checkpoint_shuttles[head_slot] = checkpoint_shuttle
             output('Replica', replica_id, 'received checkpoint shuttle, slot_number is', slot_number,'. Caching the shuttle')
         else:
-            output('Replica', replica_id, 'Processing checkpoint shuttle, state of dictionary', dictionary, 'saving', state_to_save)
+            output('Replica', replica_id, 'Processing checkpoint shuttle, state of dictionary', dictionary, 'saving', state_to_save, 'time:: ', datetime.datetime.now())
             result = process_checkpoint_shuttle(checkpoint_shuttle, s_replica_id)
             output('Received result', result, 'after processing checkpoint shuttle', replica_id)
 
@@ -143,7 +145,7 @@ class Replica(process):
         result = sign.verify_sign(verify_key_hex_map['head'], checkpoint_statements[index])
         if not result == None:
             for index in range(1, my_index):
-                result = sign.verify_sign(verify_key_hex_map['replica_'+str(index)], checkpoint_statements[index])
+                result = sign.verify_sign(verify_key_hex_map['replica_' + str(index)], checkpoint_statements[index])
                 if result == None:
                     verified = False
                     break
@@ -168,6 +170,7 @@ class Replica(process):
             delete_history_prefix(checkpoint_shuttle.checkpoint_proof, replica_id)
         return verified
 
+
     def receive(msg=('ReverseCheckpointShuttle', checkpoint_shuttle, s_replica_id,), from_=replica):
         output('Replica', replica_id, 'received reverse checkpoint shuttle from', s_replica_id)
 
@@ -176,24 +179,9 @@ class Replica(process):
         if not replica_id == 'head':
             my_index = int(replica_id.split('_')[1])
 
+        output('inside reverse checkpoint shuttle', replica_id, 'saved state', state_to_save)
         #Validate order proof with previous
         verified = verify_proof(checkpoint_shuttle.checkpoint_proof, pickle.dumps(state_to_save), 'checkpoint')
-
-        # result = verify_sign(verify_key_hex_map['head'], checkpoint_statements[0], hashed_result)
-        # if result == None:
-        #     verified = False
-
-        # index = 1
-        # for statement in checkpoint_statements[1:-1]:
-        #     result = verify_sign(verify_key_hex_map['replica_'+str(index)], statement, hashed_result)
-        #     if result == None:
-        #         verfied = False
-        #         break
-        #     index += 1
-        # result = verify_sign(verify_key_hex_map['tail'], result_statements[-1], hashed_result)
-        # if result == None:
-        #     verified = False
-        output('#### verified ', verified)
 
         if not verified:
             output('Replica', replica_id, 'detected incorrect signature while verifying signature on checkpoint statement.\
@@ -202,6 +190,8 @@ class Replica(process):
         else:
             #send checkpoint shuttle to the previous replica
             if replica_id == 'head':
+                delete_history_prefix(checkpoint_shuttle.checkpoint_proof, replica_id)
+                output('Replica', replica_id, 'deleted history prefix')
                 return
             elif (replica_id == 'replica_1'):
                 send(('ReverseCheckpointShuttle', checkpoint_shuttle, replica_id,), to=config['head'])                
@@ -314,9 +304,6 @@ class Replica(process):
     #replica intermediate: add order statement to order proof contained in the forward shuttle
     def add_order_statement(forward_shuttle, operation, replica_index):
         # if slot_number % checkpoint_slot ==0 and not slot_number == 0:
-        if slot_number == checkpt_interval:
-            state_to_save = dictionary.copy()
-            output('Replica', replica_index, 'Dictionary being saved', state_to_save, dictionary)
         verified = True
         slot_number += 1
         verified = check_history(history, slot_number, operation, replica_index)
@@ -329,7 +316,13 @@ class Replica(process):
 
             order_proof = forward_shuttle.order_proof            
             order_proof.add_statement(signed_order_statement)
-            history.append(order_proof)            
+            history.append(order_proof)
+
+            if slot_number == checkpt_interval:
+                state_to_save = dictionary.copy()
+                # state_to_save = dictionary
+                output('Replica', replica_index, 'Dictionary being saved', state_to_save, dictionary, 'time:: ', datetime.datetime.now())
+
         else:
             #send reconfig request
             output('Invalid order proof detected at replica', replica_id)
@@ -608,6 +601,14 @@ class Replica(process):
             send(('ResultShuttle', forward_shuttle, result, sequence_number, client_id, operation, ), to=config['replica_' +
             str(len(config) - 2)])
             output('Replica', replica_id ,': Sent result shuttle to', 'replica_' + str(len(config) - 2))
+
+            output('Replica', replica_id, 'trying to get from cached results', cached_checkpoint_shuttles)
+            # check if any checkpoint shuttle is cached, if yes process it
+            if (slot_number == checkpt_interval or slot_number % checkpt_interval == 0) and not slot_number == 0 and len(cached_checkpoint_shuttles) > 0:
+                verified = process_checkpoint_shuttle(cached_checkpoint_shuttles[slot_number], replica_id)
+                del cached_checkpoint_shuttles[slot_number]
+                # except KeyError:
+                #     output('Something went wrong while trying to get the cached checkpoint shuttle')
         else:
             output('Replica', replica_id, 'Incorrect behaviour was detected. Send reconfiguration request to Olympus')
             send(('ReconfigurationRequest', 'invalid order proof at tail', operation, sequence_number, client_id, replica_id,), to=olympus)
