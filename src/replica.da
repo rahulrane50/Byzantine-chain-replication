@@ -120,12 +120,14 @@ class Replica(process):
     def receive(msg=('CheckpointShuttle', checkpoint_shuttle, s_replica_id, head_slot), from_=head):
         # when the shuttle is received, if slot_number != checkpt_interval
         # add shuttle to cache
-        output('Replica', replica_id, 'received checkpoint shuttle from', s_replica_id)
+        output('Replica', replica_id, 'received checkpoint shuttle from', s_replica_id, 'slot number is', slot_number)
         if slot_number < checkpt_interval and not slot_number % checkpt_interval == 0:
             cached_checkpoint_shuttles[head_slot] = checkpoint_shuttle
             output('Replica', replica_id, 'received checkpoint shuttle, slot_number is', slot_number,'. Caching the shuttle')
         else:
-            process_checkpoint_shuttle(checkpoint_shuttle, s_replica_id)
+            output('Replica', replica_id, 'Processing checkpoint shuttle, state of dictionary', dictionary, 'saving', state_to_save)
+            result = process_checkpoint_shuttle(checkpoint_shuttle, s_replica_id)
+            output('Received result', result, 'after processing checkpoint shuttle', replica_id)
 
 
     def process_checkpoint_shuttle(checkpoint_shuttle, s_replica_id):
@@ -151,11 +153,11 @@ class Replica(process):
             checkpoint_statement = messages.CheckpointStatement('checkpoint', hashed_running_state)
             signed_stmt = sign.sign_msg(signing_key, pickle.dumps(checkpoint_statement))
             checkpoint_shuttle.checkpoint_proof.add_statement(signed_stmt)
-            #send both shuttles to next replica
+            output('forwarding checkpoint shuttle')
             if  not replica_id == 'tail' and my_index == len(config) - 2:
-                send(('CheckpointShuttle', checkpoint_shuttle, replica_id,), to=config['tail'])
+                send(('CheckpointShuttle', checkpoint_shuttle, replica_id, slot_number), to=config['tail'])
             elif not replica_id == 'tail':
-                send(('CheckpointShuttle', checkpoint_shuttle, replica_id), to=config['replica_' + str(my_index + 1)])
+                send(('CheckpointShuttle', checkpoint_shuttle, replica_id, slot_number), to=config['replica_' + str(my_index + 1)])
         else:
             output('Replica', replica_id, 'detected incorrect signature while verifying signature on checkpoint statement. Sending reconfiguration request')
             send(('ReconfigurationRequest', 'invalid checkpoint statement ', None, -1, -1, replica_id,), to=olympus)
@@ -164,7 +166,7 @@ class Replica(process):
             output('Replica Tail: completed checkpoint')
             send(('ReverseCheckpointShuttle', checkpoint_shuttle, replica_id,), to=config['replica_' + str(len(config) - 2)])
             delete_history_prefix(checkpoint_shuttle.checkpoint_proof, replica_id)
-
+        return verified
 
     def receive(msg=('ReverseCheckpointShuttle', checkpoint_shuttle, s_replica_id,), from_=replica):
         output('Replica', replica_id, 'received reverse checkpoint shuttle from', s_replica_id)
@@ -226,7 +228,8 @@ class Replica(process):
     #replica head: add operation at that slot
     def order_operation(operation, client):
         # if slot_number % checkpoint_slot == 0 and not slot_number == 0:
-        if checkpt_interval == 2:
+        # if slot_number == checkpt_interval:
+        if slot_number == checkpt_interval or slot_number % checkpt_interval == 0 and not slot_number == 0:
             output('initiating checkpoint for slot', slot_number)
             state_to_save = dictionary.copy()
             initiate_checkpoint()
@@ -311,9 +314,9 @@ class Replica(process):
     #replica intermediate: add order statement to order proof contained in the forward shuttle
     def add_order_statement(forward_shuttle, operation, replica_index):
         # if slot_number % checkpoint_slot ==0 and not slot_number == 0:
-        if checkpt_interval == 2:
+        if slot_number == checkpt_interval:
             state_to_save = dictionary.copy()
-            output('Replica', replica_index,'Dictionary being saved', state_to_save)
+            output('Replica', replica_index, 'Dictionary being saved', state_to_save, dictionary)
         verified = True
         slot_number += 1
         verified = check_history(history, slot_number, operation, replica_index)
@@ -523,11 +526,7 @@ class Replica(process):
     #Intermediate replicas
     def receive(msg=('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), from_=replica):
         output('Replica Intermediate:', replica_id, 'shuttle received from previous replica :', forward_shuttle)
-        my_index = int(replica_id.split('_')[1])
-
-        # check if any checkpoint shuttle is cached, if yes process it
-        
-
+        my_index = int(replica_id.split('_')[1])        
 
         #Check for failure trigger condition
         failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties,'forwarded_request')
@@ -540,6 +539,7 @@ class Replica(process):
             elif failure_error_dict['drop_result']:
                 output("Injecting drop head result statement failure.")
                 result_shuttle.result_proof.statements.pop(0)
+
 
         #add order statement to the order proof in the shuttle
         success = add_order_statement(forward_shuttle, operation, my_index)
@@ -557,6 +557,14 @@ class Replica(process):
                 send(('TailRequest', forward_shuttle, operation, client, sequence_number, client_id,), to=config['tail'])
             else:                                                                                                                                                           
                 send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_' + str(my_index + 1)])
+
+            output('Replica', replica_id, 'trying to get from cached results', cached_checkpoint_shuttles)
+            # check if any checkpoint shuttle is cached, if yes process it
+            if (slot_number == checkpt_interval or slot_number % checkpt_interval == 0) and not slot_number == 0 and len(cached_checkpoint_shuttles) > 0:
+                verified = process_checkpoint_shuttle(cached_checkpoint_shuttles[slot_number], replica_id)
+                del cached_checkpoint_shuttles[slot_number]
+                # except KeyError:
+                #     output('Something went wrong while trying to get the cached checkpoint shuttle')
         else:
             output('Replica', replica_id, 'Incorrect behaviour was detected. Send reconfiguration request to Olympus')
             send(('ReconfigurationRequest', 'invalid order proof', operation, sequence_number, client_id, replica_id,), to=olympus)

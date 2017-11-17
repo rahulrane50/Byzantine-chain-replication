@@ -115,8 +115,8 @@ class Olympus(process):
             config = configuration['config_' + current_configuration]
             send_wegde_requests(config)
 
-            await(len(listof(replica, received(('WedgedStatement', wedged_statement,), from_=replica))) == len(config)):
-                check_wedged_statements(wedged_statements)
+            await(len(listof(replica, received(('WedgedStatement', wedged_statement,), from_=replica))) == len(config))
+            check_wedged_statements(wedged_statements)
 
 
     def send_wegde_requests(config):
@@ -182,7 +182,7 @@ class Olympus(process):
         return configuration['config_0']        
 
 
-    def setup_and_start_replicas(configuration, public_key_map, priv_key_map, signing_key_map, verify_key_hex_map, head_timeout, nonhead_timeout):
+    def setup_and_start_replicas(configuration, public_key_map, priv_key_map, signing_key_map, verify_key_hex_map, head_timeout, nonhead_timeout, checkpt_interval):
         #setup and start head and tail
         setup(configuration['head'], (self, configuration, public_key_map, priv_key_map['head'],
         signing_key_map['head'], verify_key_hex_map, 'head', 'ACTIVE', head_timeout, nonhead_timeout, checkpt_interval))
