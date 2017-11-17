@@ -69,7 +69,7 @@ def verify_result_statement(verify_key, statement, hashed_result):
         return verified, None
     if verified:
         result_statement = pickle.loads(verified_result_statement)
-    if not sodium_memcmp(hashed_result, result_statement.result_hash):
+    if not sodium_memcmp(hashed_result, result_statement.hash):
         verified = False
     return verified, result_statement
 
@@ -120,13 +120,18 @@ class Client(process):
         #self.client_workload = []
         # self.testing_scenarios = config_file.get_testing_file()
 
-    def run():
-        output('Client', id, ': running')
-        
+    def get_configuration():
         #get the current configuration from Olympus
         output('Client', id, ':requesting configuration from Olympus')
         send(('GetConfiguration', id), to=olympus)
         await(some(received(('Configuration', configuration,))))
+
+
+    def run():
+        output('Client', id, ': running')
+
+        #get the current configuration from Olympus
+        get_configuration()
 
         send(('GetKeys', id), to=olympus)
         await(some(received(('Keys', public_key_map, priv_key,))))
@@ -147,6 +152,8 @@ class Client(process):
                 output("Expected dict :", val["expected_dict"])
                 perform_op = False
                 expected_dict = val["expected_dict"]
+            else:
+                expected_dict = {}
             if val.get('workload'):
                 client_workload = get_workload(val["workload"])[0]
             else:
@@ -166,27 +173,28 @@ class Client(process):
                     sequence_number += 1
                     if perform_op:
                         result = operations.perform_operation(operation, expected_dict)
-            
+
             if await(check_timeout(client_timeout)[0] or (len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload))):
                 timed_out, seqno = check_timeout(client_timeout, reset=True)
                 if timed_out:
-                    output("Operation having seqno ",seqno, " timed out hence retransmitting")
+                    output("Operation having seqno ",seqno, operation, " timed out hence retransmitting")
                     received_result = retransmit_request(operation, seqno)
-                    while(not received_result):
-                        output("Client ", id, "timed out again while waiting for result of operation,", operation, ". Retransmitting..")
+                    if(not received_result):
+                        output("Client", id, ": timed out again while waiting for result of operation,", operation, ". Retransmitting..")
                         received_result = retransmit_request(operation, seqno)
                 else:
                     output('result received')
             elif timeout(client_timeout):
                 output('Client', id, ': timed out waiting for result, resending request')
                 retransmit_request(operation, seqno)
- 
+
 
             verified = verify_expected_result(id, expected_dict)
             if verified: 
                 output("Actual result matching with expected result")
             else:
                 output("Actual result not macthing with expected result")
+
 
     def synchronous_operations():
         for operation in client_workload:
@@ -267,6 +275,13 @@ class Client(process):
             retransmit_request(result_statement.operation, identifier.split('_')[1])
 
 
+    # replicas reply with error statement if they are immutable
+    def receive(msg=('ErrorStatement', replica_id,), from_=replica):
+        output('Client ', id, 'received error statement from replica', replica_id)
+        # get new configuration from olympus
+        get_configuration()
+
+
     def receive(msg=('Keys', key_map, key), from_=olympus):
         public_key_map = key_map
         priv_key = key
@@ -302,7 +317,7 @@ class Client(process):
             output('Client', id, ': Result:', result, 'received and verified for retransmitted operation,', operation)
             received_result = True
         elif timeout(client_timeout):
-            output('Client', id, ': timed out waiting for result of retransmitted opertion, resending request')
+            output('Client', id, ': timed out waiting for result of retransmitted operation,', operation, 'resending request')
 
         return received_result
 

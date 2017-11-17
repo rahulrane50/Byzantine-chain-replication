@@ -16,19 +16,26 @@ def main():
     t = olympus_properties['t']
     head_timeout = olympus_properties['head_timeout']
     nonhead_timeout = olympus_properties['nonhead_timeout']
+    checkpt_interval = olympus_properties['checkpt_interval']
 
     num_clients = client_properties['num_client']
     num_replicas = int(t) * 2 + 1
     client_timeout = int(client_properties['client_timeout'])/1000
 
     replicas = new(replica.Replica, num=num_replicas, at='ReplicasNode')
+    #replicas = new(replica.Replica, num=num_replicas)
+    output('Created replica processes. They will be started from within the olympus process')
 
-    olympus_p = new(olympus.Olympus, [1, num_replicas, num_clients, replicas, head_timeout, nonhead_timeout], num=1, at='OlympusNode')
+    olympus_p = new(olympus.Olympus, [1, num_replicas, num_clients, replicas, head_timeout, nonhead_timeout, checkpt_interval], num=1, at='OlympusNode')
+    #olympus_p = new(olympus.Olympus, [1, num_replicas, num_clients, replicas, head_timeout, nonhead_timeout, checkpt_interval], num=1)
     start(olympus_p)
+    output('Created and started olympus process')
 
     clients = new(client.Client, num=num_clients, at='ClientsNode')
+    #clients = new(client.Client, num=num_clients)
 
     clients_list = list(clients)
     for index in range(0, num_clients):
         setup(clients_list[index], (client_timeout, index, olympus_p, testing_scenarios))
         start(clients_list[index])
+    output('Created and started client processes')

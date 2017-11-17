@@ -1,10 +1,13 @@
 import sys
 import nacl.utils
+import pickle
+import time
 from nacl.public import PrivateKey, Box
 config(channel is fifo, clock is lamport)
 
 replica = import_da('replica')
 client  = import_da('client')
+sign = import_da('sign')
 config_file = import_da('read_config_file')
 
 def generate_pub_priv_keys():
@@ -19,7 +22,8 @@ def generate_sign_key():
     return signing_key, verify_key_hex
 
 class Olympus(process):
-    def setup(no_of_configuration:int, no_of_replicas:int, num_of_clients:int, set_of_replicas:set, head_timeout:int, nonhead_timeout:int):
+    def setup(no_of_configuration:int, no_of_replicas:int, num_of_clients:int, 
+        set_of_replicas:set, head_timeout:int, nonhead_timeout:int, checkpt_interval: int):
         self.configuration = {}
         for id in range(0, no_of_configuration):
             self.configuration['config_' + str(id)] = {}
@@ -27,6 +31,11 @@ class Olympus(process):
         self.priv_key_map = {}
         self.signing_key_map = {}
         self.verify_key_hex_map = {}
+        self.current_configuration = 0
+        self.reconfiguring = False
+        self.wedged_statements = []
+        self.caughtup_statements = []
+        self.verified_running_state = False
 
     def create_keys():
         priv_key, pub_key = generate_pub_priv_keys()
@@ -67,13 +76,55 @@ class Olympus(process):
         #output("signing key map :", signing_key_map)
         #output("verifying key hex map :", verify_key_hex_map)
 
-    def validate_history(histories):
+    def verify_order_proof(replica_history, longest_hist_slot, longest_hist_op, replica_id):
+        for order_proof in replica_history:
+            if order_proof.slot == longest_hist_slot:
+                if order_proof.operation != longest_hist_op:
+                    output("Invalid operation detected at slot ", order_proof.slot, " for replica ",replica_id)
+                    return False
         return True
 
-    def create_catchup_statement(longest_running_hist, history):
-        catchup_statement = []
-        for order_proof in longest_running_hist:
+    def verify_history(histories):
+        longest_running_history = []
+        verified = True
+        longest_running_hist_replica = -1
+        for replica_id, history in histories:
+            if (len(history) > len(longest_running_history)):
+                longest_running_history = history
+                longest_running_hist_replica = replica_id
+        
+        cnt = 0
+        output("Olympus: Found longest running history for replica ", longest_running_hist_replica," as : ", longest_running_history)
+        t = (no_of_replicas - 1)/2
+        for replica_id, history in histories:
+            error = False
+            for order_proof in longest_running_history:
+                verified = verify_order_proof(history, order_proof.slot, order_proof.operation, replica_id)
+                if not verified:
+                    error = True
+                    break
             
+            if not error:
+                cnt += 1
+                output("History of replica ", replica_id, " is consistent with longest running history.")
+
+        if (cnt >= t+1):
+            output("Quorum of replicas have consistent valid histories.")
+        else:
+            #TODO: need to select another quorum
+            output("########### Need to select different quorum")
+            verified = False
+
+        return verified, longest_running_history
+
+    def check_caughtup_statements(caughtup_statements):
+        replica_running_hash = caughtup_statements[0][1]
+        for replica_id, running_hash in caughtup_statements:
+            if running_hash != replica_running_hash:
+                output("Replica id :", replica_id, " running state hash value did not match with other replicas running state hash.")
+                return False
+        return True
+
     def run():
         """Create configuration of replicas, and start them"""
         configuration['config_0'] = create_replica_config(list(set_of_replicas))
@@ -84,7 +135,7 @@ class Olympus(process):
         self.create_signing_keys()
 
         setup_and_start_replicas(configuration['config_0'], public_key_map, priv_key_map, signing_key_map,
-        verify_key_hex_map, head_timeout, nonhead_timeout)
+        verify_key_hex_map, head_timeout, nonhead_timeout, checkpt_interval)
 
         #Olympus always stays on
         await(False)
@@ -109,25 +160,122 @@ class Olympus(process):
         if(replica == configuration['config_0']['head']):
             send(('OlympusRequest', anymsg), to=replica)
 
-    def receive(msg=('ReconfigurationRequest', reconfig_request,), from_=replica):
-        output("Reconfiguration request received from replica :", reconfig_request.issuerID)
-        wedgeRequest = WedgeRequest(reconfig_request.issuerID)
-        signedWedgeRequest = sign.sign_msg(signing_key_map['olympus'], pickle.dumps(wedgeRequest))
-       
-        for replica in configuration['config_0'].keys():
-            send(('WedgeRequest', signedWedgeRequest), to=replica)
+    def receive(msg=('ReconfigurationRequest', reason, operation, sequence_number, client, replica_id, ), from_=replica):
+        output("Olympus: Received reconfiguration request from", replica_id, "for ", reason,"in operation ", operation)
+        longest_running_history = None
 
-    def receive(msg=('WedgeStatement', signedWedgeStatements,), from_=replica):
-        verified = validate_history(signedWedgeStatements)
-       
-        longest_running_hist = []
-        for history in singedWedgeStatements.histories:
-            if len(history)  > len(longest_running_hist):
-                longest_running_hist = history
+        if not reconfiguring:
+            reconfiguring = True
+            config = configuration['config_' + str(current_configuration)]
+            send_wegde_requests(config)
+
+            output("RR: config :", config, len(config))
+            while(len(wedged_statements) < len(config)):
+                await(len(listof(replica, received(('WedgedStatement', wedged_statement,), from_=replica))) <= len(config))
+                #await(len(listof(replica, received(('WedgedStatement', wedged_statement,), from_=replica))) == len(config))
+                #await(len(listof(wedge_statements, received(('WedgedStatement', wedged_statement,), from_=replica))) == len(config))
+            output("Olympus: Received wedge statements from all replicas.")
+            longest_running_history = check_wedged_statements(wedged_statements)
         
-        for history in signedWedgeStatement.histories:
-            catchup_statement = create_catchup_statement(longest_running_hist, history)
+        for replica_id, statement in wedged_statements:
+            verified_statement = sign.verify_sign(verify_key_hex_map[replica_id], statement)
+            verified_statement = pickle.loads(verified_statement)
+            catchup_statement = longest_running_history[len(verified_statement.history):]
             #send catchup statement
+            output("Olympus : Sending catchup statement to replica ", replica_id)
+            send(('CatchupStatement', catchup_statement), to=config[replica_id])
+       
+        verified = False
+        await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id,), from_=replica))) == len(config))
+        output("Olympus :Received all caughtup statements")
+        verified = check_caughtup_statements(caughtup_statements) 
+        if verified:
+            output("All replicas caught up messages matched successfully.")
+        else:
+            #TODO: Need to choose different quorum
+            pass
+
+        output("Olympus :Sending getrunning history request.")
+        send('GetRunningState', to=config['head'])
+        if not verified_running_state:
+            for index in range(1, len(config) - 1):
+                if not verified_running_state:
+                    send('GetRunningState', to=config['replica_' + str(index)])
+            if not verified_running_state:
+                send('GetRunningState', to=config['tail'])  
+
+        output("Olympus :Creating init hist statement.")
+        #init_hist_statement = create_hist_statement(hashed_running_state)
+        #send init_hist_statement to new configuration
+
+    def send_wegde_requests(config):
+        output("Sending wedge requests each replica")
+        send('WedgeRequest', to=config['head'])
+        for index in range(1, len(config) - 1):
+            send('WedgeRequest', to=config['replica_' + str(index)])
+        send('WedgeRequest', to=config['tail'])        
+        
+    def receive(msg=('WedgedStatement', wedged_statement, replica_id,), from_=replica):
+        output("Olympus received wedge statement from replica ", replica_id)
+        wedged_statements.append((replica_id, wedged_statement))
+    
+    def receive(msg=('CaughtupStatement', hashed_running_state, replica_id,), from_=replica):
+        caughtup_statements.append((replica_id, hashed_running_state))
+
+    def receive(msg=('RunningState', running_state,replica_id,), from_=replica):
+        output("Olympus : Received running state from replica ", replica_id)
+        hashed_running_state = sign.generate_hash(pickle.dumps(running_state))
+        if hashed_running_state == caughtup_statements[0][1] and not verified_running_state:
+            verified_running_state = True
+            output("Hash value of running state received matched with caughtup messages hashed running state value.")
+ 
+    def check_wedged_statements(wedged_statements):
+        count = no_of_replicas
+        t = (no_of_replicas - 1)/2
+        error = False
+
+        histories = []
+        checkpoint_proofs = []
+        running_states = []
+
+        for element in wedged_statements:
+            if count < t + 1:
+                output('Olympus: Could not obtain a quorum of t+1 replicas')
+                error = True
+                break
+
+            replica_id = element[0]
+            statement  = element[1]
+            #verify signature
+            verified_statement = sign.verify_sign(verify_key_hex_map[replica_id], statement)
+            if verified_statement:
+                verified_statement = pickle.loads(verified_statement)
+                histories.append((replica_id, verified_statement.history))
+                checkpoint_proofs.append((replica_id, verified_statement.checkpoint_proof))
+                running_states.append((replica_id, verified_statement.running_state))
+            else:
+                count -= 1    
+
+        verified = False
+        if not error:
+            output("Olympus sign verified for all wedge statements.")
+            verified, longest_running_history = verify_history(histories)
+            # get history with maximum length from list
+            # for all histories, check that the slot and operation upto the common prefix are equal
+            # find t+1 equal histories and choose as quorum
+            # if t+1 is not found, choose different quorum
+            # find difference of longest history and each replica's history
+            # send sequence of operations to all replicas
+            # each replica will execute the sent operations on its dictionary
+            # calculate hash of dictionary at each replica and send to olympus
+            # olympus collect all hashes, and check that all are equal
+            # if any is unequal, choose new quorum from received hashes
+            # don't repeat steps from above because we already have all values corresponding to all replicas
+
+        if verified:
+            return longest_running_history
+        
+        return None
 
     def create_replica_config(list_of_replicas):
         configuration['config_0']['head'] = list_of_replicas[0]
@@ -140,19 +288,19 @@ class Olympus(process):
         return configuration['config_0']        
 
 
-    def setup_and_start_replicas(configuration, public_key_map, priv_key_map, signing_key_map, verify_key_hex_map, head_timeout, nonhead_timeout):
+    def setup_and_start_replicas(configuration, public_key_map, priv_key_map, signing_key_map, verify_key_hex_map, head_timeout, nonhead_timeout, checkpt_interval):
         #setup and start head and tail
         setup(configuration['head'], (self, configuration, public_key_map, priv_key_map['head'],
-        signing_key_map['head'], verify_key_hex_map, 'head', 'ACTIVE', head_timeout, nonhead_timeout))
+        signing_key_map['head'], verify_key_hex_map, 'head', 'ACTIVE', head_timeout, nonhead_timeout, checkpt_interval))
         setup(configuration['tail'], (self, configuration, public_key_map, priv_key_map['tail'],
-        signing_key_map['tail'], verify_key_hex_map, 'tail', 'ACTIVE', head_timeout, nonhead_timeout))
+        signing_key_map['tail'], verify_key_hex_map, 'tail', 'ACTIVE', head_timeout, nonhead_timeout, checkpt_interval))
         start(configuration['head'])
         start(configuration['tail'])
 
         #setup and start intermediate replicas
         for index in range(1, len(configuration) - 1):
             setup(configuration['replica_' + str(index)], (self, configuration, public_key_map, priv_key_map['replica_'
-            + str(index)], signing_key_map['replica_' + str(index)], verify_key_hex_map, 'replica_' + str(index), 'ACTIVE', head_timeout, nonhead_timeout))
+            + str(index)], signing_key_map['replica_' + str(index)], verify_key_hex_map, 'replica_' + str(index), 'ACTIVE', head_timeout, nonhead_timeout, checkpt_interval))
             start(configuration['replica_' + str(index)])    
 
 

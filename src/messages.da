@@ -4,7 +4,7 @@ class OrderStatement:
     def __init__(self, type, slot, operation):
         self.operation = operation
         self.slot = slot               
-
+        self.type = type
 
 class Proof:
     statements = set()
@@ -26,9 +26,21 @@ class Proof:
 class ResultStatement():
     def __init__(self, type, result, hash, operation):
         self.result = result
-        self.result_hash = hash
+        self.hash = hash
         self.operation = operation
+        self.type = type
 
+class CheckpointStatement():
+    def __init__(self, type, hash):
+        self.hash = hash
+        self.type = type
+
+class WedgedStatement():
+    def __init__(self, type, history, latest_checkpoint_proof, running_state):
+        self.type = type
+        self.running_state = running_state
+        self.history = history
+        self.checkpoint_proof = latest_checkpoint_proof
 
 class Shuttle:
     #slot = 0
@@ -40,10 +52,13 @@ class Shuttle:
         self.result_proof = ''
         # Shuttle.slot += 1
         # self.slot_number = slot_number
-
+        self.checkpoint_proof = ''
 
     def add_result_proof(self, result_proof):
         self.result_proof = result_proof
+
+    def add_checkpoint_proof(self, checkpoint_proof):
+        self.checkpoint_proof = checkpoint_proof
 
     def update_sender(self, sender):
         self.sender = sender
@@ -54,9 +69,3 @@ class ReconfigurationRequest():
         self.slot = slot,
         self.operation = operation, 
         self.misbehavingProcessID = misbehavingProcessID,
-       
-class WedgeStatement():
-    def __init__(self, history, checkpoint_proof, runningState):
-        self.history = history
-        self.checkpoint_proof = checkpoint_proof
-        self.runningState = runningState
