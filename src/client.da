@@ -69,7 +69,7 @@ def verify_result_statement(verify_key, statement, hashed_result):
         return verified, None
     if verified:
         result_statement = pickle.loads(verified_result_statement)
-    if not sodium_memcmp(hashed_result, result_statement.result_hash):
+    if not sodium_memcmp(hashed_result, result_statement.hash):
         verified = False
     return verified, result_statement
 
@@ -171,7 +171,7 @@ class Client(process):
                     sequence_number += 1
                     if perform_op:
                         result = operations.perform_operation(operation, expected_dict)
-            
+
             if await(check_timeout(client_timeout)[0] or (len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload))):
                 timed_out, seqno = check_timeout(client_timeout, reset=True)
                 if timed_out:
@@ -185,7 +185,7 @@ class Client(process):
             elif timeout(client_timeout):
                 output('Client', id, ': timed out waiting for result, resending request')
                 retransmit_request(operation, seqno)
- 
+
 
             verified = verify_expected_result(id, expected_dict)
             if verified: 

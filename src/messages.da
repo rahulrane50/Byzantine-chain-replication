@@ -4,7 +4,7 @@ class OrderStatement:
     def __init__(self, type, slot, operation):
         self.operation = operation
         self.slot = slot               
-
+        self.type = type
 
 class Proof:
     statements = set()
@@ -28,10 +28,19 @@ class ResultStatement():
         self.result = result
         self.hash = hash
         self.operation = operation
+        self.type = type
 
 class CheckpointStatement():
-    def __init__(hash):
+    def __init__(self, type, hash):
         self.hash = hash
+        self.type = type
+
+class WedgedStatement():
+    def __init__(self, type, history, latest_checkpoint_proof, running_state):
+        self.type = type
+        self.running_state = running_state
+        self.history = history
+        self.checkpoint_proof = latest_checkpoint_proof
 
 class Shuttle:
     #slot = 0
@@ -49,7 +58,7 @@ class Shuttle:
         self.result_proof = result_proof
 
     def add_checkpoint_proof(self, checkpoint_proof):
-    self.checkpoint_proof = checkpoint_proof
+        self.checkpoint_proof = checkpoint_proof
 
     def update_sender(self, sender):
         self.sender = sender

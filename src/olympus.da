@@ -19,7 +19,8 @@ def generate_sign_key():
     return signing_key, verify_key_hex
 
 class Olympus(process):
-    def setup(no_of_configuration:int, no_of_replicas:int, num_of_clients:int, set_of_replicas:set, head_timeout:int, nonhead_timeout:int):
+    def setup(no_of_configuration:int, no_of_replicas:int, num_of_clients:int, 
+        set_of_replicas:set, head_timeout:int, nonhead_timeout:int, checkpt_interval: int):
         self.configuration = {}
         for id in range(0, no_of_configuration):
             self.configuration['config_' + str(id)] = {}
@@ -27,6 +28,9 @@ class Olympus(process):
         self.priv_key_map = {}
         self.signing_key_map = {}
         self.verify_key_hex_map = {}
+        self.current_configuration = 0
+        self.reconfiguring = False
+        self.wedged_statements = []
 
     def create_keys():
         priv_key, pub_key = generate_pub_priv_keys()
@@ -77,7 +81,7 @@ class Olympus(process):
         self.create_signing_keys()
 
         setup_and_start_replicas(configuration['config_0'], public_key_map, priv_key_map, signing_key_map,
-        verify_key_hex_map, head_timeout, nonhead_timeout)
+        verify_key_hex_map, head_timeout, nonhead_timeout, checkpt_interval)
 
         #Olympus always stays on
         await(False)
@@ -104,8 +108,67 @@ class Olympus(process):
 
 
     def receive(msg=('ReconfigurationRequest', reason, operation, sequence_number, client, replica_id,), from_=replica):
-        output('Olympus: Received reconfiguration request from', replica_id, 'for ', reason, 'in operation ', operation, 'from client ', client)
+        output('Olympus: Received reconfiguration request from', replica_id, 'for ', reason, 'in operation ', operation, 'from client ', client)        
+        
+        if not reconfiguring:
+            reconfiguring = True
+            config = configuration['config_' + current_configuration]
+            send_wegde_requests(config)
 
+            await(len(listof(replica, received(('WedgedStatement', wedged_statement,), from_=replica))) == len(config)):
+                check_wedged_statements(wedged_statements)
+
+
+    def send_wegde_requests(config):
+        send('WedgeRequest', to=config['head'])
+        for index in range(1, len(config) - 1):
+            send('WedgeRequest', to=config['replica_' + index])
+        send('WedgeRequest', to=config['tail'])        
+        
+
+    def receive(msg=('WedgedStatement', wedged_statement, replica_id,), from_=replica):
+        wedged_statements.append((replica_id, wedged_statement))
+
+
+    def check_wedged_statements(wedged_statements):
+        count = no_of_replicas
+        t = (no_of_replicas - 1)/2
+        error = False
+
+        histories = []
+        checkpoint_proofs = []
+        running_states = []
+
+        for element in wedged_statements:
+            if count < t + 1:
+                output('Olympus: Could not obtain a quorum of t+1 replicas')
+                error = True
+                break
+
+            replica_id = element[0]
+            statement  = element[1]
+            #verify signature
+            sign_verified = verify_sign(verify_key_hex_map[replica_id], stmt)
+            if sign_verified:
+                histories.append((replica_id, statement.history))
+                checkpoint_proofs.append((replica_id, statement.checkpoint_proof))
+                running_states.append((replica_id, statement.running_state))
+            else:
+                count -= 1    
+
+        if not error:
+            verify_history(histories)
+            # get history with maximum length from list
+            # for all histories, check that the slot and operation upto the common prefix are equal
+            # find t+1 equal histories and choose as quorum
+            # if t+1 is not found, choose different quorum
+            # find difference of longest history and each replica's history
+            # send sequence of operations to all replicas
+            # each replica will execute the sent operations on its dictionary
+            # calculate hash of dictionary at each replica and send to olympus
+            # olympus collect all hashes, and check that all are equal
+            # if any is unequal, choose new quorum from received hashes
+            # don't repeat steps from above because we already have all values corresponding to all replicas
 
 
     def create_replica_config(list_of_replicas):
@@ -122,16 +185,16 @@ class Olympus(process):
     def setup_and_start_replicas(configuration, public_key_map, priv_key_map, signing_key_map, verify_key_hex_map, head_timeout, nonhead_timeout):
         #setup and start head and tail
         setup(configuration['head'], (self, configuration, public_key_map, priv_key_map['head'],
-        signing_key_map['head'], verify_key_hex_map, 'head', 'ACTIVE', head_timeout, nonhead_timeout))
+        signing_key_map['head'], verify_key_hex_map, 'head', 'ACTIVE', head_timeout, nonhead_timeout, checkpt_interval))
         setup(configuration['tail'], (self, configuration, public_key_map, priv_key_map['tail'],
-        signing_key_map['tail'], verify_key_hex_map, 'tail', 'ACTIVE', head_timeout, nonhead_timeout))
+        signing_key_map['tail'], verify_key_hex_map, 'tail', 'ACTIVE', head_timeout, nonhead_timeout, checkpt_interval))
         start(configuration['head'])
         start(configuration['tail'])
 
         #setup and start intermediate replicas
         for index in range(1, len(configuration) - 1):
             setup(configuration['replica_' + str(index)], (self, configuration, public_key_map, priv_key_map['replica_'
-            + str(index)], signing_key_map['replica_' + str(index)], verify_key_hex_map, 'replica_' + str(index), 'ACTIVE', head_timeout, nonhead_timeout))
+            + str(index)], signing_key_map['replica_' + str(index)], verify_key_hex_map, 'replica_' + str(index), 'ACTIVE', head_timeout, nonhead_timeout, checkpt_interval))
             start(configuration['replica_' + str(index)])    
 
 

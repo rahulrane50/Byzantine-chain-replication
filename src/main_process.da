@@ -16,6 +16,7 @@ def main():
     t = olympus_properties['t']
     head_timeout = olympus_properties['head_timeout']
     nonhead_timeout = olympus_properties['nonhead_timeout']
+    checkpt_interval = olympus_properties['checkpt_interval']
 
     num_clients = client_properties['num_client']
     num_replicas = int(t) * 2 + 1
@@ -24,7 +25,7 @@ def main():
     replicas = new(replica.Replica, num=num_replicas, at='ReplicasNode')
     output('Created replica processes. They will be started from within the olympus process')
 
-    olympus_p = new(olympus.Olympus, [1, num_replicas, num_clients, replicas, head_timeout, nonhead_timeout], num=1, at='OlympusNode')
+    olympus_p = new(olympus.Olympus, [1, num_replicas, num_clients, replicas, head_timeout, nonhead_timeout, checkpt_interval], num=1, at='OlympusNode')
     start(olympus_p)
     output('Created and started olympus process')
 
