@@ -13,7 +13,8 @@ olympus = import_da('olympus')
 config_file = import_da('read_config_file')
 sign = import_da('sign')
 operations = import_da('operations')
-config(clock is lamport)
+
+config(channel is fifo, clock is lamport)
 
 #client_properties = {}
 

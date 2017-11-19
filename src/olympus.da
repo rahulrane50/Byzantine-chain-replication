@@ -37,7 +37,7 @@ class Olympus(process):
         self.caughtup_statements = []
         self.verified_running_state = False
 
-    def create_keys():
+    def create_keys(reconfig):
         priv_key, pub_key = generate_pub_priv_keys()
         public_key_map['olympus'] = pub_key
         priv_key_map['olympus'] = priv_key
@@ -50,31 +50,31 @@ class Olympus(process):
         public_key_map['tail'] = pub_key
         priv_key_map['tail'] = priv_key
  
-        for index in range(1, len(configuration['config_0']) - 1):
+        for index in range(1, len(configuration['config_' + str(current_configuration)]) - 1):
             priv_key, pub_key = generate_pub_priv_keys()
             public_key_map['replica_' + str(index)] = pub_key
             priv_key_map['replica_' + str(index)] = priv_key
  
-        for index in range(0, num_of_clients):
-            priv_key, pub_key = generate_pub_priv_keys()
-            public_key_map['client_' + str(index)] = pub_key
-            priv_key_map['client_' + str(index)] = priv_key
-        #output("public key map :", public_key_map)
-        #output("priv key map :", priv_key_map)
+        if not reconfig:
+            for index in range(0, num_of_clients):
+                priv_key, pub_key = generate_pub_priv_keys()
+                public_key_map['client_' + str(index)] = pub_key
+                priv_key_map['client_' + str(index)] = priv_key
+
         
-    def create_signing_keys():
+    def create_signing_keys(reconfig):
         signing_key_map['olympus'], verify_key_hex_map['olympus'] = generate_sign_key()
         signing_key_map['head'], verify_key_hex_map['head'] = generate_sign_key()
         signing_key_map['tail'], verify_key_hex_map['tail'] = generate_sign_key()
-        for index in range(1, len(configuration['config_0']) - 1):
+        for index in range(1, len(configuration['config_' + str(current_configuration)]) - 1):
             sign_key, verify_key_hex = generate_sign_key()
             signing_key_map['replica_' + str(index)] = sign_key
             verify_key_hex_map['replica_' + str(index)] = verify_key_hex
 
-        for index in range(0, num_of_clients):
-            signing_key_map['client_' + str(index)], verify_key_hex_map['client_' + str(index)] = generate_sign_key()
-        #output("signing key map :", signing_key_map)
-        #output("verifying key hex map :", verify_key_hex_map)
+        if not reconfig:
+            for index in range(0, num_of_clients):
+                signing_key_map['client_' + str(index)], verify_key_hex_map['client_' + str(index)] = generate_sign_key()
+
 
     def verify_order_proof(replica_history, longest_hist_slot, longest_hist_op, replica_id):
         for order_proof in replica_history:
@@ -117,6 +117,7 @@ class Olympus(process):
 
         return verified, longest_running_history
 
+
     def check_caughtup_statements(caughtup_statements):
         replica_running_hash = caughtup_statements[0][1]
         for replica_id, running_hash in caughtup_statements:
@@ -125,28 +126,32 @@ class Olympus(process):
                 return False
         return True
 
+
     def run():
         """Create configuration of replicas, and start them"""
-        configuration['config_0'] = create_replica_config(list(set_of_replicas))
+        configuration['config_' + str(current_configuration)] = create_replica_config(list(set_of_replicas))
         
         """Create public and private keys for replicas and client."""
-        self.create_keys()
+        self.create_keys(False)
       
-        self.create_signing_keys()
+        self.create_signing_keys(False)
 
-        setup_and_start_replicas(configuration['config_0'], public_key_map, priv_key_map, signing_key_map,
+        setup_and_start_replicas(configuration['config_' + str(current_configuration)], public_key_map, priv_key_map, signing_key_map,
         verify_key_hex_map, head_timeout, nonhead_timeout, checkpt_interval)
 
         #Olympus always stays on
         await(False)
+
    
     def receive(msg=('GetConfiguration', client_id), from_=client):
         output('Olympus: Sending configuration to client:', client_id)
         send(('Configuration', configuration), to=client)
 
+
     def receive(msg=('GetKeys', client_id), from_=client):
         output('Sending keys to client:', client_id)
         send(('Keys', public_key_map, priv_key_map['client_'+ str(client_id)]), to=client)
+
 
     def receive(msg=('GetSigningKeys', client_id), from_=client):
         output('Sending signing keys to client:', client_id)
@@ -157,8 +162,9 @@ class Olympus(process):
         #Broadcast msg to all replicas
         anymsg = "This is Olympus!!"
         output("handling forward request msg from replica :", operation)
-        if(replica == configuration['config_0']['head']):
+        if(replica == configuration['config_' + str(current_configuration)]['head']):
             send(('OlympusRequest', anymsg), to=replica)
+
 
     def receive(msg=('ReconfigurationRequest', reason, operation, sequence_number, client, replica_id, ), from_=replica):
         output("Olympus: Received reconfiguration request from", replica_id, "for ", reason,"in operation ", operation)
@@ -170,57 +176,90 @@ class Olympus(process):
             send_wegde_requests(config)
 
             output("RR: config :", config, len(config))
-            while(len(wedged_statements) < len(config)):
-                await(len(listof(replica, received(('WedgedStatement', wedged_statement,), from_=replica))) <= len(config))
+            await(len(listof(replica, received(('WedgedStatement', signed_wedged_statement, replica_id,), from_=replica))) == len(config))
+            # while(len(wedged_statements) < len(config)):
+                # await(len(listof(replica, received(('WedgedStatement', signed_wedged_statement, replica_id,), from_=replica))) <= len(config))
                 #await(len(listof(replica, received(('WedgedStatement', wedged_statement,), from_=replica))) == len(config))
                 #await(len(listof(wedge_statements, received(('WedgedStatement', wedged_statement,), from_=replica))) == len(config))
             output("Olympus: Received wedge statements from all replicas.")
             longest_running_history = check_wedged_statements(wedged_statements)
-        
-        for replica_id, statement in wedged_statements:
-            verified_statement = sign.verify_sign(verify_key_hex_map[replica_id], statement)
-            verified_statement = pickle.loads(verified_statement)
-            catchup_statement = longest_running_history[len(verified_statement.history):]
-            #send catchup statement
-            output("Olympus : Sending catchup statement to replica ", replica_id)
-            send(('CatchupStatement', catchup_statement), to=config[replica_id])
-       
-        verified = False
-        await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id,), from_=replica))) == len(config))
-        output("Olympus :Received all caughtup statements")
-        verified = check_caughtup_statements(caughtup_statements) 
-        if verified:
-            output("All replicas caught up messages matched successfully.")
-        else:
-            #TODO: Need to choose different quorum
-            pass
 
-        output("Olympus :Sending getrunning history request.")
-        send('GetRunningState', to=config['head'])
-        if not verified_running_state:
-            for index in range(1, len(config) - 1):
-                if not verified_running_state:
-                    send('GetRunningState', to=config['replica_' + str(index)])
+            for replica_id, statement in wedged_statements:
+                verified_statement = sign.verify_sign(verify_key_hex_map[replica_id], statement)
+                verified_statement = pickle.loads(verified_statement)
+                catchup_statement = longest_running_history[len(verified_statement.history):]
+                #send catchup statement
+                output("Olympus : Sending catchup statement to replica ", replica_id)
+                send(('CatchupStatement', catchup_statement), to=config[replica_id])
+           
+            verified = False
+            await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id,), from_=replica))) == len(config))
+            output("Olympus :Received all caughtup statements")
+            verified = check_caughtup_statements(caughtup_statements) 
+            if verified:
+                output("All replicas caught up messages matched successfully.")
+            else:
+                #TODO: Need to choose different quorum
+                pass
+
+            output("Olympus :Sending getrunning history request.")
+            send('GetRunningState', to=config['head'])
             if not verified_running_state:
-                send('GetRunningState', to=config['tail'])  
+                for index in range(1, len(config) - 1):
+                    if not verified_running_state:
+                        send('GetRunningState', to=config['replica_' + str(index)])
+                if not verified_running_state:
+                    send('GetRunningState', to=config['tail'])  
 
-        output("Olympus :Creating init hist statement.")
-        #init_hist_statement = create_hist_statement(hashed_running_state)
-        #send init_hist_statement to new configuration
+            output("Olympus: Creating init hist statement.")
+            #init_hist_statement = create_hist_statement(hashed_running_state)
+            #send init_hist_statement to new configuration
+            await(verified_running_state)
+            #killing exisiting replicas
+            output("Sending terminate message to each replica")
+            send('Terminate', to=configuration['config_' + str(current_configuration)]['head'])
+            for index in range(1, len(config) - 1):
+                send('Terminate', to=configuration['config_' + str(current_configuration)]['replica_' + str(index)])
+            send(('Terminate'), to=configuration['config_' + str(current_configuration)]['tail'])
+
+            create_new_replicas()
+            # time.sleep(5)
+            # output("Testing")
+            # send('Terminate', to=configuration['config_' + str(current_configuration)]['head'])
+            # for index in range(1, len(config) - 1):
+            #     send('Terminate', to=configuration['config_' + str(current_configuration)]['replica_' + str(index)])
+            # send(('Terminate'), to=configuration['config_' + str(current_configuration)]['tail'])
+
+
+    def create_new_replicas():
+        current_configuration += 1
+        configuration['config_' + str(current_configuration)] = {}
+
+        replicas = new(replica.Replica, num=no_of_replicas, at='ReplicasNode')
+        configuration['config_' + str(current_configuration)] = create_replica_config(list(replicas))
+        """Create public and private keys for replicas"""
+        self.create_keys(True)
+        self.create_signing_keys(True)
+        setup_and_start_replicas(configuration['config_' + str(current_configuration)], public_key_map, priv_key_map, signing_key_map,
+        verify_key_hex_map, head_timeout, nonhead_timeout, checkpt_interval)
+
 
     def send_wegde_requests(config):
         output("Sending wedge requests each replica")
         send('WedgeRequest', to=config['head'])
         for index in range(1, len(config) - 1):
             send('WedgeRequest', to=config['replica_' + str(index)])
-        send('WedgeRequest', to=config['tail'])        
+        send('WedgeRequest', to=config['tail'])
+
         
     def receive(msg=('WedgedStatement', wedged_statement, replica_id,), from_=replica):
         output("Olympus received wedge statement from replica ", replica_id)
         wedged_statements.append((replica_id, wedged_statement))
+
     
     def receive(msg=('CaughtupStatement', hashed_running_state, replica_id,), from_=replica):
         caughtup_statements.append((replica_id, hashed_running_state))
+
 
     def receive(msg=('RunningState', running_state,replica_id,), from_=replica):
         output("Olympus : Received running state from replica ", replica_id)
@@ -228,6 +267,7 @@ class Olympus(process):
         if hashed_running_state == caughtup_statements[0][1] and not verified_running_state:
             verified_running_state = True
             output("Hash value of running state received matched with caughtup messages hashed running state value.")
+
  
     def check_wedged_statements(wedged_statements):
         count = no_of_replicas
@@ -277,15 +317,16 @@ class Olympus(process):
         
         return None
 
+
     def create_replica_config(list_of_replicas):
-        configuration['config_0']['head'] = list_of_replicas[0]
-        configuration['config_0']['tail'] = list_of_replicas[-1]
+        configuration['config_' + str(current_configuration)]['head'] = list_of_replicas[0]
+        configuration['config_' + str(current_configuration)]['tail'] = list_of_replicas[-1]
 
         index = 1
         for replica_itr in list_of_replicas[1:-1]:
-            configuration['config_0']['replica_' + str(index)] = replica_itr
+            configuration['config_' + str(current_configuration)]['replica_' + str(index)] = replica_itr
             index += 1
-        return configuration['config_0']        
+        return configuration['config_' + str(current_configuration)]
 
 
     def setup_and_start_replicas(configuration, public_key_map, priv_key_map, signing_key_map, verify_key_hex_map, head_timeout, nonhead_timeout, checkpt_interval):
