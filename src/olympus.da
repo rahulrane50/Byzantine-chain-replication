@@ -3,7 +3,14 @@ import nacl.utils
 import pickle
 import time
 from nacl.public import PrivateKey, Box
-config(channel is fifo, clock is lamport)
+import nacl.hash
+import nacl.encoding
+import nacl.signing
+from nacl.bindings.utils import sodium_memcmp
+
+# config(channel is fifo, clk is lamport)
+config(channel = 'fifo')
+config(clock = 'lamport')
 
 replica = import_da('replica')
 client  = import_da('client')
@@ -36,12 +43,13 @@ class Olympus(process):
         self.wedged_statements = []
         self.caughtup_statements = []
         self.verified_running_state = False
+        self.send_config_client = False
 
     def create_keys(reconfig):
-        priv_key, pub_key = generate_pub_priv_keys()
-        public_key_map['olympus'] = pub_key
-        priv_key_map['olympus'] = priv_key
-        
+        public_old_keys = sign.generate_hash(pickle.dumps(public_key_map))
+        private_old_keys = sign.generate_hash(pickle.dumps(priv_key_map))
+
+        output('Olympus creating new keys', reconfig)
         priv_key, pub_key = generate_pub_priv_keys()
         public_key_map['head'] = pub_key
         priv_key_map['head'] = priv_key
@@ -55,15 +63,26 @@ class Olympus(process):
             public_key_map['replica_' + str(index)] = pub_key
             priv_key_map['replica_' + str(index)] = priv_key
  
+        public_new_keys = sign.generate_hash(pickle.dumps(public_key_map))
+        private_new_keys = sign.generate_hash(pickle.dumps(priv_key_map))
+
+        output('private keys ', sodium_memcmp(private_old_keys, private_new_keys))
+        output('public keys ', sodium_memcmp(public_old_keys, public_new_keys))
+
         if not reconfig:
+            output('Olympus creating new keys', reconfig)
+            priv_key, pub_key = generate_pub_priv_keys()
+            public_key_map['olympus'] = pub_key
+            priv_key_map['olympus'] = priv_key
+
             for index in range(0, num_of_clients):
                 priv_key, pub_key = generate_pub_priv_keys()
                 public_key_map['client_' + str(index)] = pub_key
-                priv_key_map['client_' + str(index)] = priv_key
-
+                priv_key_map['client_' + str(index)] = priv_key        
         
+
     def create_signing_keys(reconfig):
-        signing_key_map['olympus'], verify_key_hex_map['olympus'] = generate_sign_key()
+        output('Olympus creating new signing keys', reconfig)
         signing_key_map['head'], verify_key_hex_map['head'] = generate_sign_key()
         signing_key_map['tail'], verify_key_hex_map['tail'] = generate_sign_key()
         for index in range(1, len(configuration['config_' + str(current_configuration)]) - 1):
@@ -72,6 +91,9 @@ class Olympus(process):
             verify_key_hex_map['replica_' + str(index)] = verify_key_hex
 
         if not reconfig:
+            output('Olympus creating new signing keys', reconfig)
+            signing_key_map['olympus'], verify_key_hex_map['olympus'] = generate_sign_key()
+
             for index in range(0, num_of_clients):
                 signing_key_map['client_' + str(index)], verify_key_hex_map['client_' + str(index)] = generate_sign_key()
 
@@ -144,8 +166,12 @@ class Olympus(process):
 
    
     def receive(msg=('GetConfiguration', client_id), from_=client):
-        output('Olympus: Sending configuration to client:', client_id)
-        send(('Configuration', configuration), to=client)
+        output('Olympus: client requested configuration. reconfiguring', reconfiguring)
+        if not reconfiguring:
+            output('Olympus: Sending configuration to client:', client_id)
+            send(('Configuration', configuration['config_' + str(current_configuration)], current_configuration,), to=client)
+        elif reconfiguring:
+            send_config_client = (True, client)
 
 
     def receive(msg=('GetKeys', client_id), from_=client):
@@ -166,7 +192,7 @@ class Olympus(process):
             send(('OlympusRequest', anymsg), to=replica)
 
 
-    def receive(msg=('ReconfigurationRequest', reason, operation, sequence_number, client, replica_id, ), from_=replica):
+    def receive(msg=('ReconfigurationRequest', reason, operation, sequence_number, client_id, replica_id, ), from_=replica):
         output("Olympus: Received reconfiguration request from", replica_id, "for ", reason,"in operation ", operation)
         longest_running_history = None
 
@@ -223,12 +249,21 @@ class Olympus(process):
             send(('Terminate'), to=configuration['config_' + str(current_configuration)]['tail'])
 
             create_new_replicas()
-            # time.sleep(5)
-            # output("Testing")
-            # send('Terminate', to=configuration['config_' + str(current_configuration)]['head'])
-            # for index in range(1, len(config) - 1):
-            #     send('Terminate', to=configuration['config_' + str(current_configuration)]['replica_' + str(index)])
-            # send(('Terminate'), to=configuration['config_' + str(current_configuration)]['tail'])
+
+            send('Hello', to=configuration['config_' + str(current_configuration)]['head'])
+            for index in range(1, len(config) - 1):
+                send('Hello', to=configuration['config_' + str(current_configuration)]['replica_' + str(index)])
+            send(('Hello'), to=configuration['config_' + str(current_configuration)]['tail'])
+
+            await(len(listof(replica, received(('ReplicaUp', replica_id), from_=replica))) == len(configuration['config_' + str(current_configuration)]))            
+            if send_config_client[0]:
+                output('current_configuration ', current_configuration)
+                output('Olympus: Sending configuration to client', client_id)
+                send(('Configuration', configuration['config_' + str(current_configuration)], current_configuration,), to=send_config_client[1])
+
+
+    def receive(msg=('ReplicaUp', replica_id), from_=replica):
+        output("Olympus received up message from replica ", replica_id)
 
 
     def create_new_replicas():
@@ -237,6 +272,7 @@ class Olympus(process):
 
         replicas = new(replica.Replica, num=no_of_replicas, at='ReplicasNode')
         configuration['config_' + str(current_configuration)] = create_replica_config(list(replicas))
+        output('Olympus creating new configuration. New config number ', current_configuration)
         """Create public and private keys for replicas"""
         self.create_keys(True)
         self.create_signing_keys(True)

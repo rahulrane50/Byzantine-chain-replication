@@ -7,9 +7,11 @@ import time
 from math import floor
 from nacl.bindings.utils import sodium_memcmp
 import datetime
+import os
 
-config(channel is fifo, clock is lamport)
-
+# config(channel is fifo, clk is lamport)
+config(channel = 'fifo')
+config(clock = 'lamport')
 
 olympus    = import_da('olympus')
 client     = import_da('client')
@@ -213,7 +215,9 @@ class Replica(process):
         failure_scenario_properties = read_config_file.get_failure_scenario_properties()
 
         await(kill)
-
+        # output('After await. Replicas exiting..')
+        # os._exit(-1)
+        # sys.exit()
 
     """""""""""""""""""""""""""
         Methods for shuttles
@@ -624,31 +628,35 @@ class Replica(process):
             output('Replica', replica_id, 'is Immutable. Sending error statement to client')
             send(('ErrorStatement', replica_id,), to=client)
 
-
         replica_box = Box(priv_key, public_key_map['client_' + str(client_id)])
         
         operation = sign.verify_msg(encrypted_operation, replica_box, operation_hex, verify_key_hex_map['client_'+ str(client_id)])
-        output('Replica', replica_id,': retransmit request received from client for operation:', operation.encode('ascii'), 'sequence number:', sequence_number)
-        output('Replica', replica_id, ': and cache is', cache)
-        result = cache.get(str(client_id) + '_' + str(sequence_number))
+        if not operation == None:
+            output('Replica', replica_id,': retransmit request received from client for operation:', operation.encode('ascii'), 'sequence number:', sequence_number)
+            output('Replica', replica_id, ': and cache is', cache)
+            result = cache.get(str(client_id) + '_' + str(sequence_number))
 
-        if not result == None:  #if the result is present in cache, send to client
-            result_proof = result[0].result_proof
-            output('Replica', replica_id, ': sending result for retransmitted request with sequence number', sequence_number)
-            send(('RetransmitResult', result_proof, result[1], str(client_id) + '_' + str(sequence_number) + '_' + 'resent', operation), to=client)
-        elif result == None and not replica_id == 'head': #if result not found in cache, forward to head
-            output('Replica', replica_id, 'did not find result cached. Forwarding request to head..')
-            send(('ForwardRequest', operation, sequence_number, client_id, client, replica_id), to=config['head'])
-            inprogress_operations[(client_id, sequence_number, operation)]  = time.time()
-            #poll timeout here
-            #check_timeout(nonhead_timeout)
-            if await(not result == None):
+            if not result == None:  #if the result is present in cache, send to client
+                result_proof = result[0].result_proof
+                output('Replica', replica_id, ': sending result for retransmitted request with sequence number', sequence_number)
                 send(('RetransmitResult', result_proof, result[1], str(client_id) + '_' + str(sequence_number) + '_' + 'resent', operation), to=client)
-                found = True                            
-                #break
-            elif timeout(nonhead_timeout/1000):
-                output('Replica', replica_id,'timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..')
-                send(('ReconfigurationRequest', 'timeout at intermediate replica in retransmitted request', operation, sequence_number, client_id, replica_id,), to=olympus)
+            elif result == None and not replica_id == 'head': #if result not found in cache, forward to head
+                output('Replica', replica_id, 'did not find result cached. Forwarding request to head..')
+                send(('ForwardRequest', operation, sequence_number, client_id, client, replica_id), to=config['head'])
+                inprogress_operations[(client_id, sequence_number, operation)]  = time.time()
+
+                #poll timeout here
+                if await(get_result(client_id, sequence_number)):
+                    result = cache.get(str(client_id) + '_' + str(sequence_number))
+                    result_proof = result[0].result_proof
+                    send(('RetransmitResult', result_proof, result[1], str(client_id) + '_' + str(sequence_number) + '_' + 'resent', operation), to=client)
+                    found = True
+                    #break
+                elif timeout(nonhead_timeout/1000):
+                    output('Replica', replica_id,'timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..')
+                    send(('ReconfigurationRequest', 'timeout at intermediate replica in retransmitted request', operation, sequence_number, client_id, replica_id,), to=olympus)
+        else:
+            output('Replica', replica_id, 'There was an error in decrypting the operation')
 
 
     def get_result(client_id, sequence_number):
@@ -715,7 +723,7 @@ class Replica(process):
         signed_wedged_statement = sign.sign_msg(signing_key, pickle.dumps(wedged_statement))
         output("Replica ", replica_id, ": sending wedged statement to olympus.")
         send(('WedgedStatement', signed_wedged_statement, replica_id,), to=olympus)
-   
+
 
     def receive(msg=('CatchupStatement', catchup_statement), from_=olympus):
         output("Replica ", replica_id, ":Received catchup statement :", catchup_statement)
@@ -737,6 +745,9 @@ class Replica(process):
         output('Replica', replica_id, 'exiting on message from Olympus')
         kill = True
 
+    def receive(msg=('Hello'), from_=olympus):
+        output('Replica', replica_id, 'received hello from Olympus')        
+        send(('ReplicaUp', replica_id), to=olympus)
 
     def start_new_operation(operation, client, client_id, sequence_number):
         #add operation at the next slot
@@ -757,3 +768,4 @@ class Replica(process):
 
 def main():
     print('Replica main method')
+    sys.exit()

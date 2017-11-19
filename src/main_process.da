@@ -4,7 +4,9 @@ replica = import_da('replica')
 client = import_da('client')
 config_file = import_da('read_config_file')
 
-config(channel is fifo, clock is lamport)
+# config(channel is fifo, clock is lamport)
+config(channel = 'fifo')
+config(clock = 'lamport')
 
 def main():
     test_file_name = sys.argv[1]
