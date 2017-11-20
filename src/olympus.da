@@ -106,6 +106,8 @@ class Olympus(process):
                 if order_proof.operation != longest_hist_op:
                     output("Invalid operation detected at slot ", order_proof.slot, " for replica ",replica_id)
                     return False
+                else:
+                    break    
         return True
 
 
@@ -117,50 +119,117 @@ class Olympus(process):
         cnt = 0
         temp = None
         t = (no_of_replicas - 1)/2
+        consistent_replicas = {}
+        incorrect_longest_hist_replica = []
 
         while(cnt < t + 1):
             for replica_id, history in histories:
-                if len(history) > len(longest_running_history) and not replica_id == temp:
+                if len(history) > len(longest_running_history) and not replica_id in incorrect_longest_hist_replica:
                     longest_running_history = history
                     longest_running_hist_replica = replica_id
 
-            quorum_with_replica = []
-            for q in set_of_quorums:
-                if longest_running_hist_replica in q:
-                    quorum_with_replica.append(q)
-
             output("Olympus: Found longest running history for replica ", longest_running_hist_replica," as : ", longest_running_history)
+            # consistent_replicas.append((longest_running_hist_replica, longest_running_history))
 
-            for quorum in quorum_with_replica:
-                for replica_id, history in histories:
-                    # if cnt >= t + 1:
-                    #     break
-                    if replica_id in quorum:
-                        error = False
-                        for order_proof in longest_running_history:
-                            verified = verify_order_proof(history, order_proof.slot, order_proof.operation, replica_id)
-                            if not verified:
-                                error = True
-                                break
+            for replica_id, history in histories:
+                # if cnt >= t + 1:
+                #     break
+                error = False
+                for order_proof in longest_running_history:
+                    verified = verify_order_proof(history, order_proof.slot, order_proof.operation, replica_id)
+                    if not verified:
+                        error = True
+                        break
 
-                        if not error:
-                            cnt += 1
-                            output("History of replica ", replica_id, " is consistent with longest running history.")
-
-                if cnt >= t + 1:
-                    output("Quorum of replicas has consistent valid histories.")
-                    break
-                else:
-                    #TODO: need to select another quorum
-                    output("Selecting a different quorum")
-                    cnt = 0
-                    # verified = False
+                if not error:
+                    cnt += 1
+                    output("History of replica ", replica_id, " is consistent with longest running history.")
+                    consistent_replicas[replica_id] = history
             if cnt < t + 1:
-                temp = longest_running_hist_replica
-            else:
+                output('Matching of other replica histories with the longest history failed. Finding new longest history')
+                incorrect_longest_hist_replica.append(longest_running_hist_replica) #drop this replica the next time
+                cnt = 0
+            if len(incorrect_longest_hist_replica) >= t + 1:
+                output('Olympus: Found more than t replicas faulty. Cannot proceed.')
+                verified = False
                 break
+        output('Exit from the loop')
+        return verified, longest_running_history, consistent_replicas
+        ### original
+        # for replica_id, history in histories:
+        #     if len(history) > len(longest_running_history):
+        #         longest_running_history = history
+        #         longest_running_hist_replica = replica_id
 
-        return verified, longest_running_history
+        # output("Olympus: Found longest running history for replica ", longest_running_hist_replica," as : ", longest_running_history)
+
+        # for replica_id, history in histories:
+        #     # if cnt >= t + 1:
+        #     #     break            
+        #     error = False
+        #     for order_proof in longest_running_history:
+        #         verified = verify_order_proof(history, order_proof.slot, order_proof.operation, replica_id)
+        #         if not verified:
+        #             error = True
+        #             break
+
+        #     if not error:
+        #         cnt += 1
+        #         output("History of replica ", replica_id, " is consistent with longest running history.")
+
+        #     if cnt >= t + 1:
+        #         output("Quorum of replicas has consistent valid histories.")
+        #         break
+        #     else:
+        #         #TODO: need to select another quorum
+        #         output("Selecting a different quorum")
+        #         cnt = 0
+            # verified = False
+
+        ### NEW CHANGES - useless
+        # while(cnt < t + 1):
+        #     for replica_id, history in histories:
+        #         if len(history) > len(longest_running_history) and not replica_id == temp:
+        #             longest_running_history = history
+        #             longest_running_hist_replica = replica_id
+
+        #     quorum_with_replica = []
+        #     for q in set_of_quorums:
+        #         if longest_running_hist_replica in q:
+        #             quorum_with_replica.append(q)
+
+        #     output("Olympus: Found longest running history for replica ", longest_running_hist_replica," as : ", longest_running_history)
+
+        #     for quorum in quorum_with_replica:
+        #         for replica_id, history in histories:
+        #             # if cnt >= t + 1:
+        #             #     break
+        #             if replica_id in quorum:
+        #                 error = False
+        #                 for order_proof in longest_running_history:
+        #                     verified = verify_order_proof(history, order_proof.slot, order_proof.operation, replica_id)
+        #                     if not verified:
+        #                         error = True
+        #                         break
+
+        #                 if not error:
+        #                     cnt += 1
+        #                     output("History of replica ", replica_id, " is consistent with longest running history.")
+
+        #         if cnt >= t + 1:
+        #             output("Quorum of replicas has consistent valid histories.")
+        #             break
+        #         else:
+        #             #TODO: need to select another quorum
+        #             output("Selecting a different quorum")
+        #             cnt = 0
+        #             # verified = False
+        #     if cnt < t + 1:
+        #         temp = longest_running_hist_replica
+        #     else:
+        #         break
+
+        # return verified, longest_running_history
 
 
     def check_caughtup_statements(caughtup_statements):
@@ -226,29 +295,31 @@ class Olympus(process):
 
             output("RR: config :", config, len(config))
             await(len(listof(replica, received(('WedgedStatement', signed_wedged_statement, replica_id,), from_=replica))) == len(config))
-            # while(len(wedged_statements) < len(config)):
-                # await(len(listof(replica, received(('WedgedStatement', signed_wedged_statement, replica_id,), from_=replica))) <= len(config))
-                #await(len(listof(replica, received(('WedgedStatement', wedged_statement,), from_=replica))) == len(config))
-                #await(len(listof(wedge_statements, received(('WedgedStatement', wedged_statement,), from_=replica))) == len(config))
+            #TO-DO: add timeout here because some replicas might have crashed
+
             output("Olympus: Received wedge statements from all replicas.")
-            longest_running_history = check_wedged_statements(wedged_statements)
+            longest_running_history, consistent_replicas = check_wedged_statements(wedged_statements)
+            output('Consistent replicas', consistent_replicas)
 
             for replica_id, statement in wedged_statements:
-                verified_statement = sign.verify_sign(verify_key_hex_map[replica_id], statement)
-                verified_statement = pickle.loads(verified_statement)
-                catchup_statement = longest_running_history[len(verified_statement.history):]
-                #send catchup statement
-                output("Olympus : Sending catchup statement to replica ", replica_id)
-                send(('CatchupStatement', catchup_statement), to=config[replica_id])
-           
-            verified = False
-            await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id,), from_=replica))) == len(config))
+                if replica_id in list(consistent_replicas.keys()):
+                    verified_statement = sign.verify_sign(verify_key_hex_map[replica_id], statement)
+                    verified_statement = pickle.loads(verified_statement)
+                    catchup_statement = longest_running_history[len(verified_statement.history):]
+                    #send catchup statement
+                    output("Olympus : Sending catchup statement to replica ", replica_id)
+                    send(('CatchupStatement', catchup_statement), to=config[replica_id])
+                else:
+                    verified = False
+            # await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id,), from_=replica))) == len(config))
+            await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id,), from_=replica))) == len(consistent_replicas))
             output("Olympus :Received all caughtup statements")
             verified = check_caughtup_statements(caughtup_statements) 
             if verified:
                 output("All replicas caught up messages matched successfully.")
             else:
                 #TODO: Need to choose different quorum
+                # if length of consistent_replicas == t+1 and it was not verified, no progress?
                 pass
 
             output("Olympus :Sending getrunning history request.")
@@ -364,7 +435,7 @@ class Olympus(process):
         verified = False
         if not error:
             output("Olympus sign verified for all wedge statements.")
-            verified, longest_running_history = verify_history(histories, set_of_quorums)
+            verified, longest_running_history, consistent_replicas = verify_history(histories, set_of_quorums)
             # get history with maximum length from list
             # for all histories, check that the slot and operation upto the common prefix are equal
             # find t+1 equal histories and choose as quorum
@@ -378,7 +449,7 @@ class Olympus(process):
             # don't repeat steps from above because we already have all values corresponding to all replicas
 
         if verified:
-            return longest_running_history
+            return longest_running_history, consistent_replicas
         
         return None
 
