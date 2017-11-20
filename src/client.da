@@ -105,7 +105,7 @@ def check_timeout(client_timeout, reset=False):
 
 
 class Client(process):
-    def setup(client_timeout:int, id: int, olympus:olympus.Olympus, testing_scenarios:dict):
+    def setup(client_timeout:int, id: int, olympus:olympus.Olympus, testing_scenarios:dict, num_replicas:int):
         output('Client', id, ': setup')
         self.configuration = {}
         self.public_key_map = {}
@@ -226,11 +226,9 @@ class Client(process):
         configuration = config
         output('Client', id, ':received configuration from Olympus', configuration, '. Configuration no: ', config_id)
     
-
-    def receive(msg=('Result', result_proof, result, identifier, operation,), from_=tail):
-        output('Client', id,'received result shuttle', result_proof, result)
-        if len(identifier.split('_')) == 3 and identifier.split('_')[2] == 'resent':
-            output('Client', id,'received result for restransmitted request', identifier.split('_')[1])
+    def verify_results(result, result_proof):
+        count = num_replicas
+        t = (num_replicas - 1)/2
         #verify hash
         hashed_result = sign.generate_hash(result.encode('ascii'))
         result_statements = result_proof.statements
@@ -244,13 +242,26 @@ class Client(process):
             verified, result_statement = verify_result_statement(verify_key_hex_map['replica_'+str(index)], statement, hashed_result)
             if verified:
                 results.append(result)
-                break
+                # break
+            elif not verified:
+                count -= 1
             index += 1
         verified, result_statement = verify_result_statement(verify_key_hex_map['tail'], result_statements[-1], hashed_result)
         if verified:
             results.append(result)
+        return count, verified
 
-        if verified:
+
+    def receive(msg=('Result', result_proof, result, identifier, operation,), from_=tail):
+        output('Client', id,'received result shuttle', result_proof, result)
+        if len(identifier.split('_')) == 3 and identifier.split('_')[2] == 'resent':
+            output('Client', id,'received result for restransmitted request', identifier.split('_')[1])
+        count = num_replicas
+        t = (num_replicas - 1)/2
+        #verify hash
+        count, verified = verify_results(result, result_proof)
+
+        if verified and count >= t + 1:
             output('Client',id, ': Result:', result, 'received and verified for operation,', operation)
         else:
             output("Result statement of replica :",  'replica_' + str(index), " is not verified hence retransmitting.")
@@ -261,26 +272,13 @@ class Client(process):
         output('Client', id,'received result shuttle', result_proof, result)
         if len(identifier.split('_')) == 3 and identifier.split('_')[2] == 'resent':
             output('Client', id,'received result for restransmitted request', identifier.split('_')[1])
-        #verify hash
-        hashed_result = sign.generate_hash(result.encode('ascii'))
-        result_statements = result_proof.statements
-        verified = True        
-        verified, result_statement = verify_result_statement(verify_key_hex_map['head'], result_statements[0], hashed_result)
-        if verified:
-            results.append(result)
-        
-        index = 1
-        for statement in result_statements[1:-1]:
-            verified, result_statement = verify_result_statement(verify_key_hex_map['replica_'+str(index)], statement, hashed_result)
-            if verified:
-                results.append(result)
-                break
-            index += 1
-        verified, result_statement = verify_result_statement(verify_key_hex_map['tail'], result_statements[-1], hashed_result)
-        if verified:
-            results.append(result)
 
-        if verified:
+        count = num_replicas
+        t = (num_replicas - 1)/2
+        #verify hash
+        count, verified = verify_results(result, result_proof)
+
+        if verified and count >= t + 1:
             output('Client',id, ': Result:', result, 'received and verified for operation,', operation)
         else:
             output("Result statement of replica :",  'replica_' + str(index), " is not verified hence retransmitting.")

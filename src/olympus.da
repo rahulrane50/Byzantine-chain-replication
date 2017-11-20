@@ -7,6 +7,7 @@ import nacl.hash
 import nacl.encoding
 import nacl.signing
 from nacl.bindings.utils import sodium_memcmp
+import itertools
 
 # config(channel is fifo, clk is lamport)
 config(channel = 'fifo')
@@ -99,6 +100,7 @@ class Olympus(process):
 
 
     def verify_order_proof(replica_history, longest_hist_slot, longest_hist_op, replica_id):
+        # why loop here?
         for order_proof in replica_history:
             if order_proof.slot == longest_hist_slot:
                 if order_proof.operation != longest_hist_op:
@@ -106,36 +108,57 @@ class Olympus(process):
                     return False
         return True
 
-    def verify_history(histories):
+
+    def verify_history(histories, set_of_quorums):
         longest_running_history = []
         verified = True
         longest_running_hist_replica = -1
-        for replica_id, history in histories:
-            if (len(history) > len(longest_running_history)):
-                longest_running_history = history
-                longest_running_hist_replica = replica_id
-        
+        valid_quorum = None
         cnt = 0
-        output("Olympus: Found longest running history for replica ", longest_running_hist_replica," as : ", longest_running_history)
+        temp = None
         t = (no_of_replicas - 1)/2
-        for replica_id, history in histories:
-            error = False
-            for order_proof in longest_running_history:
-                verified = verify_order_proof(history, order_proof.slot, order_proof.operation, replica_id)
-                if not verified:
-                    error = True
-                    break
-            
-            if not error:
-                cnt += 1
-                output("History of replica ", replica_id, " is consistent with longest running history.")
 
-        if (cnt >= t+1):
-            output("Quorum of replicas have consistent valid histories.")
-        else:
-            #TODO: need to select another quorum
-            output("########### Need to select different quorum")
-            verified = False
+        while(cnt < t + 1):
+            for replica_id, history in histories:
+                if len(history) > len(longest_running_history) and not replica_id == temp:
+                    longest_running_history = history
+                    longest_running_hist_replica = replica_id
+
+            quorum_with_replica = []
+            for q in set_of_quorums:
+                if longest_running_hist_replica in q:
+                    quorum_with_replica.append(q)
+
+            output("Olympus: Found longest running history for replica ", longest_running_hist_replica," as : ", longest_running_history)
+
+            for quorum in quorum_with_replica:
+                for replica_id, history in histories:
+                    # if cnt >= t + 1:
+                    #     break
+                    if replica_id in quorum:
+                        error = False
+                        for order_proof in longest_running_history:
+                            verified = verify_order_proof(history, order_proof.slot, order_proof.operation, replica_id)
+                            if not verified:
+                                error = True
+                                break
+
+                        if not error:
+                            cnt += 1
+                            output("History of replica ", replica_id, " is consistent with longest running history.")
+
+                if cnt >= t + 1:
+                    output("Quorum of replicas has consistent valid histories.")
+                    break
+                else:
+                    #TODO: need to select another quorum
+                    output("Selecting a different quorum")
+                    cnt = 0
+                    # verified = False
+            if cnt < t + 1:
+                temp = longest_running_hist_replica
+            else:
+                break
 
         return verified, longest_running_history
 
@@ -307,12 +330,17 @@ class Olympus(process):
  
     def check_wedged_statements(wedged_statements):
         count = no_of_replicas
-        t = (no_of_replicas - 1)/2
+        t = int((no_of_replicas - 1)/2)
         error = False
-
+        valid_signatures = []
         histories = []
         checkpoint_proofs = []
         running_states = []
+        set_of_quorums = []
+
+        replicas = list(configuration['config_' + str(current_configuration)].keys())
+        set_of_quorums = list(itertools.combinations(replicas, t+1))
+        output('quorums', set_of_quorums)
 
         for element in wedged_statements:
             if count < t + 1:
@@ -329,13 +357,14 @@ class Olympus(process):
                 histories.append((replica_id, verified_statement.history))
                 checkpoint_proofs.append((replica_id, verified_statement.checkpoint_proof))
                 running_states.append((replica_id, verified_statement.running_state))
+                valid_signatures.append(replica_id)
             else:
-                count -= 1    
+                count -= 1
 
         verified = False
         if not error:
             output("Olympus sign verified for all wedge statements.")
-            verified, longest_running_history = verify_history(histories)
+            verified, longest_running_history = verify_history(histories, set_of_quorums)
             # get history with maximum length from list
             # for all histories, check that the slot and operation upto the common prefix are equal
             # find t+1 equal histories and choose as quorum

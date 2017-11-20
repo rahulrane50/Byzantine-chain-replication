@@ -39,6 +39,6 @@ def main():
 
     clients_list = list(clients)
     for index in range(0, num_clients):
-        setup(clients_list[index], (client_timeout, index, olympus_p, testing_scenarios))
+        setup(clients_list[index], (client_timeout, index, olympus_p, testing_scenarios, num_replicas))
         start(clients_list[index])
     output('Created and started client processes')
