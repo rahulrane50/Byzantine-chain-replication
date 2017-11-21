@@ -1,0 +1,15 @@
+{
+    "testcase_1": {
+        "Description": "For multiple client and single put operation check for result.",
+        "Expected Results": "Client must receive result before timeout and expected dict at the end of workload must match with actual results.",
+        "client_0" : {
+            "workload": ["put('movie','star'); get('movie')"],
+            "expected_dict": {
+                "movie": "star"
+            }
+         },
+         "client_1" : {
+            }
+    }
+    
+}
