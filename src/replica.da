@@ -3,6 +3,7 @@ import nacl.encoding
 import nacl.hash
 import nacl.signing
 import pickle
+import logging
 import time
 from math import floor
 from nacl.bindings.utils import sodium_memcmp
@@ -29,7 +30,10 @@ config_id='config_0'):
     if len(failure_scenario_properties) == 0:
         return failure_error
 
-    tuple = str(client_id) + ',' + str(sequence_number)
+    if client_id is None:
+        tuple = str(sequence_number)
+    else:
+        tuple = str(client_id) + ',' + str(sequence_number)
     if replica_id in failure_scenario_properties[config_id].keys():
         for tuples in failure_scenario_properties[config_id][replica_id]:
             if(tuple == tuples[0] and failure_trigger == tuples[1]):
@@ -38,13 +42,33 @@ config_id='config_0'):
 
 
 def handle_failure_error(failure_error):
-    failure_error_dict = {'operation':None, 'result':False, 'drop_result':False}
+    failure_error_dict = {'operation':None, 'result':False, 'drop_result':False, 'crash':False, 'truncate_history':None,
+    'sleep':None, 'increment_slot':False, 'drop':False, 'extra_op':False, 'invalid_order_sig':False,
+    'invalid_result_sig':False}
     if 'change_operation' in failure_error:
         failure_error_dict['operation'] = "get('x')"
     elif 'change_result' in failure_error:
         failure_error_dict['result'] = True
     elif 'drop_result_stmt' in failure_error:
         failure_error_dict['drop_result'] = True
+    elif 'crash' in failure_error:
+        failure_error_dict['crash'] = True
+    elif 'truncate_history' in failure_error:
+        n = int(failure_error.split('(')[1].split(')')[0])
+        failure_error_dict['truncate_history'] = n
+    elif 'sleep' in failure_error:
+        n = int(failure_error.split('(')[1].split(')')[0])
+        failure_error_dict['sleep'] = n
+    elif 'increment_slot' in failure_error:
+        failure_error_dict['increment_slot'] = True
+    elif 'drop' in failure_error:
+        failure_error_dict['drop'] = True
+    elif 'extra_op' in failure_error:
+        failure_error_dict['extra_op'] = True
+    elif 'invalid_order_sig' in failure_error:
+        failure_error_dict['invalid_order_sig'] = True
+    elif 'invalid_result_sig' in failure_error:
+        failure_error_dict['invalid_result_sig'] = True
     else:
         print("Unhandled failure error scenario")
     return failure_error_dict
@@ -307,7 +331,7 @@ class Replica(process):
 
 
     #replica intermediate: add order statement to order proof contained in the forward shuttle
-    def add_order_statement(forward_shuttle, operation, replica_index):
+    def add_order_statement(forward_shuttle, operation, replica_index, invalidate_order=False):
         # if slot_number % checkpoint_slot ==0 and not slot_number == 0:
         verified = True
         slot_number += 1
@@ -318,7 +342,11 @@ class Replica(process):
             output('Replica', replica_id, ': successfully verified previous order statements')
             order_statement = messages.OrderStatement('order', slot_number, operation)
             signed_order_statement = sign.sign_msg(signing_key, pickle.dumps(order_statement))
-
+            if invalidate_order:
+                signed_order_statement_list = list(signed_order_statement)
+                signed_order_statement_list[0] = (signed_order_statement_list[0] + 1) % 256
+                newsigned = bytes(signed_order_statement_list)
+                signed_order_statement = nacl.signing.SignedMessage._from_parts(signed_order_statement._signature, signed_order_statement._message, newsigned)
             order_proof = forward_shuttle.order_proof            
             order_proof.add_statement(signed_order_statement)
             history.append(order_proof)
@@ -420,10 +448,17 @@ class Replica(process):
 
 
     #add result statement to result proof contained in the result shuttle
-    def add_result_statement(shuttle, operation, result, hashed_result):
+    def add_result_statement(shuttle, operation, result, hashed_result, invalidate_result=False):
         #TO-DO: sign result statement before adding to proof
         result_statement = messages.ResultStatement('result', result, hashed_result, operation)
         signed_result_statement = sign.sign_msg(signing_key, pickle.dumps(result_statement))
+        if invalidate_result:
+            signed_result_statement_list = list(signed_result_statement)
+            signed_result_statement_list[0] = (signed_result_statement_list[0] + 1) % 256
+            newsigned = bytes(signed_result_statement_list)
+            signed_result_statement = nacl.signing.SignedMessage._from_parts(signed_result_statement._signature,
+            signed_result_statement._message, newsigned)
+ 
         result_proof = shuttle.result_proof
         result_proof.add_statement(signed_result_statement)
 
@@ -456,9 +491,12 @@ class Replica(process):
                 if failure_error:
                     failure_error_dict = handle_failure_error(failure_error)
 
-                if failure_error and failure_error_dict['operation']:
-                    operation = failure_error_dict['operation']
-                    output("Injecting failure change operation on head replica")
+                    if failure_error_dict['operation']:
+                        operation = failure_error_dict['operation']
+                        output("Injecting failure change operation on head replica")
+                    elif failure_error_dict['increment_slot'] == True:
+                        slot_number += 2
+                        output("Injecting failure of incrementing slot to ", slot_number)
                 
                 forward_shuttle = start_new_operation(operation, client, client_id, sequence_number)
 
@@ -530,7 +568,9 @@ class Replica(process):
         my_index = int(replica_id.split('_')[1])
 
         #Check for failure trigger condition
-        failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties,'forwarded_request')
+        invalidate_order_statement = False
+        failure_error = handle_failure_trigger(replica_id, client_id, sequence_number,
+        failure_scenario_properties,'shuttle')
         output("failure_error :", failure_error)
         if failure_error:
             failure_error_dict = handle_failure_error(failure_error)
@@ -540,10 +580,15 @@ class Replica(process):
             elif failure_error_dict['drop_result']:
                 output("Injecting drop head result statement failure.")
                 result_shuttle.result_proof.statements.pop(0)
-
+            elif failure_error_dict['sleep'] is not None:
+                output("Injecting sleep error at replica ", replica_id, " for time :", failure_error_dict['sleep'])
+                time.sleep(failure_error_dict['sleep'])
+            elif failure_error_dict['invalid_order_sig'] == True:
+                output("Injecting invalid order signature at replica ", replica_id)
+                invalidate_order_statement = True
 
         #add order statement to the order proof in the shuttle
-        success = add_order_statement(forward_shuttle, operation, my_index)
+        success = add_order_statement(forward_shuttle, operation, my_index, invalidate_order_statement)
         if success:
             output('Replica:', replica_id, 'orderCommand transition')
             forward_shuttle.update_sender(config['replica_' + str(my_index)])
@@ -577,11 +622,16 @@ class Replica(process):
         output('Replica Tail: shuttle received in tail replica :', forward_shuttle)
 
         #Check for failure trigger condition
-        tmp_replica_id = 'replica_' + str(len(config) - 1)
-        failure_error = handle_failure_trigger(tmp_replica_id, client_id, sequence_number, failure_scenario_properties,'forwarded_request')
+        tmp_replica_id = 'replica_' + str(len(config))
+        failure_error = handle_failure_trigger(tmp_replica_id, client_id, sequence_number,
+        failure_scenario_properties,'shuttle')
         output("failure_error :", failure_error)
+        invalidate_result = False
         if failure_error:
             failure_error_dict = handle_failure_error(failure_error)
+            if failure_error_dict['invalid_result_sig'] == True:
+                output("Replica Tail: Injecting failure error for invalidating result statement signature.")
+                invalidate_result = True
 
         # add order statement to the order proof in the shuttle
         # 3rd arg here is len(configuration) instead of 'tail', b/c we loop
@@ -594,7 +644,8 @@ class Replica(process):
             #applying operation to running state and add result statement to the result shuttle
             result = operations.perform_operation(operation, dictionary)
             output('State of dictionary at Tail:', dictionary)
-            add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')))
+            add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')),
+            invalidate_result)
 
             #the order proof is complete, send result to client
             send(('Result', forward_shuttle.result_proof, result, str(client_id) + '_' + str(sequence_number), operation), to=client)
@@ -714,8 +765,19 @@ class Replica(process):
                 #send the forward shuttle, result shuttle to the next replica
                 send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
 
-
-    def receive(msg=('WedgeRequest'), from_=olympus):
+    def receive(msg=('WedgeRequest', sequence_no), from_=olympus):
+        #Check for failure trigger condition
+        failure_error = handle_failure_trigger(replica_id, None, sequence_no, failure_scenario_properties,'wedge_request')
+        output("failure_error :", failure_error)
+        if failure_error:
+            failure_error_dict = handle_failure_error(failure_error)
+            if failure_error_dict['crash'] == True:
+                output("Replica ", replica_id, " is crashing due to fault injection.")
+                logging.shutdown()
+                os._exit(1)
+            elif failure_error_dict['truncate_history'] is not None:
+                output("Replica ", replica_id, ": truncating last ", failure_error_dict['truncate_history'], " statements from history.")
+                history = history[:-failure_error_dict['truncate_history']]
         mode = 'IMMUTABLE'
         output('Replica', replica_id, 'changed mode to IMMUTABLE on receiving wedge request from Olympus')
 
@@ -725,8 +787,16 @@ class Replica(process):
         send(('WedgedStatement', signed_wedged_statement, replica_id,), to=olympus)
 
 
-    def receive(msg=('CatchupStatement', catchup_statement), from_=olympus):
+    def receive(msg=('CatchupStatement', catchup_statement, sequence_no), from_=olympus):
         output("Replica ", replica_id, ":Received catchup statement :", catchup_statement)
+        failure_error = handle_failure_trigger(replica_id, None, sequence_no, failure_scenario_properties,'catch_up')
+        output("failure_error :", failure_error)
+        if failure_error:
+            failure_error_dict = handle_failure_error(failure_error)
+            if failure_error_dict['crash'] == True:
+                output("Replica ", replica_id, " is crashing due to fault injection.")
+                logging.shutdown()
+                os._exit(1)
         output("Before: State of dictionary :", dictionary)
         for order_proof in catchup_statement:
             result = operations.perform_operation(order_proof.operation, dictionary)
@@ -736,10 +806,18 @@ class Replica(process):
         send(('CaughtupStatement', hashed_running_state, replica_id), to=olympus)
  
 
-    def receive(msg=('GetRunningState'), from_=olympus):
+    def receive(msg=('GetRunningState', sequence_no), from_=olympus):
         output("Replica ", replica_id, " received getrunning state request from olympus.")
+        failure_error = handle_failure_trigger(replica_id, None, sequence_no,
+        failure_scenario_properties,'get_running_state')
+        output("failure_error :", failure_error)
+        if failure_error:
+            failure_error_dict = handle_failure_error(failure_error)
+            if failure_error_dict['extra_op'] == True:
+                result = operations.perform_operation("put('a','a')", dictionary)
+                output("Replica :", replica_id, " Injecting failure extra op.")
         send(('RunningState', dictionary, replica_id), to=olympus)
-
+                
 
     def receive(msg=('Terminate'), from_=olympus):
         output('Replica', replica_id, 'exiting on message from Olympus')

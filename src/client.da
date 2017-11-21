@@ -261,11 +261,11 @@ class Client(process):
         #verify hash
         count, verified = verify_results(result, result_proof)
 
-        if verified and count >= t + 1:
+        if verified or (count >= t + 1):
             output('Client',id, ': Result:', result, 'received and verified for operation,', operation)
         else:
-            output("Result statement of replica :",  'replica_' + str(index), " is not verified hence retransmitting.")
-            retransmit_request(result_statement.operation, identifier.split('_')[1])
+            output("Result statement of replica is not verified hence retransmitting.")
+            retransmit_request(operation, identifier.split('_')[1])
 
 
     def receive(msg=('RetransmitResult', result_proof, result, identifier, operation,), from_=tail):
@@ -278,11 +278,11 @@ class Client(process):
         #verify hash
         count, verified = verify_results(result, result_proof)
 
-        if verified and count >= t + 1:
+        if verified or (count >= t + 1):
             output('Client',id, ': Result:', result, 'received and verified for operation,', operation)
         else:
-            output("Result statement of replica :",  'replica_' + str(index), " is not verified hence retransmitting.")
-            retransmit_request(result_statement.operation, identifier.split('_')[1])
+            output("Result statement of replica is not verified hence retransmitting.")
+            retransmit_request(operation, identifier.split('_')[1])
 
 
     # replicas reply with error statement if they are immutable
