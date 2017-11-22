@@ -553,7 +553,12 @@ class Replica(process):
             my_index = int(replica_id.split('_')[1])
 
         #Check for failure trigger condition
-        failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties, 'result_shuttle')
+        if replica_id == 'head':
+            output("RR: head result prrof ", sequence_number, failure_scenario_properties)
+            failure_error = handle_failure_trigger('replica_0', client_id, sequence_number, failure_scenario_properties, 'result_shuttle')
+        else:
+            output("RR: non head", sequence_number, failure_scenario_properties)
+            failure_error = handle_failure_trigger(replica_id, client_id, sequence_number, failure_scenario_properties, 'result_shuttle')
         if failure_error:
             failure_error_dict = handle_failure_error(failure_error)
             output("failure error dict :", failure_error_dict)
@@ -563,6 +568,9 @@ class Replica(process):
             elif failure_error_dict['drop_result']:
                 output("Replica :", replica_id, "Injecting drop result statement failure.")
                 result_shuttle.result_proof.statements.pop(0)
+            elif failure_error_dict['sleep'] is not None:
+                output("Injecting sleep error at replica ", replica_id, " for time :", failure_error_dict['sleep'])
+                time.sleep(failure_error_dict['sleep'])
 
         #Validate order proof with previous
         verified = verify_proof(result_shuttle.result_proof, result.encode('ascii'), 'result')
