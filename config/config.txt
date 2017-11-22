@@ -9,7 +9,7 @@ t = 2
 num_client = 1
 # client timeout, in milliseconds.  if timer expires, resend request 
 # to all replicas, as described in section 3.3.
-client_timeout = 1000
+client_timeout = 3000
 # timeout, in milliseconds, for head and non-head servers, respectively:
 # if timer expires, send reconfiguration request to Olympus, as described 
 # in section 3.3.
@@ -45,7 +45,7 @@ workload[0] = pseudorandom(233,5)
 #failures[0,0] = client_request(0,0), change_operation()  ; forwarded_request( 0 , 1 ) , change_result()
 failures[0,2] = result_shuttle(0,0),drop_result_stmt(); shuttle(1,3),omit_send()
 #failures[0,1] = result_shuttle(0,0),drop_result_stmt();wedge_request(1), crash()
-failures[0,1] = catch_up(1), crash() 
+#failures[0,1] = catch_up(1), crash() 
 #failures[0,1] = result_shuttle(0,0),drop_result_stmt();wedge_request(1), truncate_history(2)
 #failures[0,1] = shuttle(0,1), sleep(20)
 #failures[0,0] = client_request(0,1), increment_slot()

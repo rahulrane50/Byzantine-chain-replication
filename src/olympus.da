@@ -46,7 +46,7 @@ class Olympus(process):
         self.wedged_statements = []
         self.caughtup_statements = []
         self.verified_running_state = False
-        self.send_config_client = False
+        self.send_config_client = (False, None)
 
         self.result_statements = {}
         self.wedge_statement_timeout = 30
@@ -336,13 +336,16 @@ class Olympus(process):
         results_to_send = {}
         statements_list = []
         # for key, value in result_statements[client_id]:
+        output("RR: result_statements :", result_statements)
         for key, value in result_statements:
             cnt = no_of_replicas
             id_client = key
             op_stmts_dict = value
             op_seq = None
+            output("RR: key, value :", key, value)
             for k, v in op_stmts_dict:
                 op_seq = k
+                output("RR: k, v:", k, v)
                 id_replica = v[0]
                 signed_statement = v[1]
                 verified_statement = sign.verify_sign(verify_key_hex_map[id_replica], signed_statement)
@@ -477,7 +480,7 @@ class Olympus(process):
                 # if length of consistent_replicas == t+1 and it was not verified, no progress?
                 pass
 
-            send_result_to_client()
+            #send_result_to_client()
 
             output("Olympus :Sending getrunning history request.")
             sequence_no = 0;
@@ -552,28 +555,28 @@ class Olympus(process):
     def receive(msg=('CaughtupStatement', hashed_running_state, replica_id, latest_result_stmt, client_id), from_=replica):
         caughtup_statements.append((replica_id, hashed_running_state))
 
-        client_dict = {}
-        try:
-            client_dict = result_statements[client_id]
-        except KeyError:
-            result_statements[client_id] = client_dict
+        #client_dict = {}
+        #try:
+        #    client_dict = result_statements[client_id]
+        #except KeyError:
+        #    result_statements[client_id] = client_dict
 
         # key   = (operation, seq)
         # value = result statement
-        output('before for loop')
-        for key, value in latest_result_stmt:
-            try:
-                output('in try')
-                result_statements[client_id][key].append((replica_id, value))
-            except KeyError:
-                output('in catch')
-                output('dict :: ', result_statements, ' :: ' ,client_id)
-                output('dict :: ', result_statements[client_id])
-                output('key :: ', key)
-                result_statements[client_id][key] = []
-                output('after empty list')
-            result_statements[client_id][key].append((replica_id, value))
-            output('after appending')
+        #output('before for loop')
+        #for key, value in latest_result_stmt:
+        #    try:
+        #        output('in try')
+        #        result_statements[client_id][key].append((replica_id, value))
+        #    except KeyError:
+        #        output('in catch')
+        #        output('dict :: ', result_statements, ' :: ' ,client_id)
+        #        output('dict :: ', result_statements[client_id])
+        #        output('key :: ', key)
+        #        result_statements[client_id][key] = []
+        #        output('after empty list')
+        #    result_statements[client_id][key].append((replica_id, value))
+        #    output('after appending')
         # try:
         #     # latest_result_stmt is a dict of the form
         #     # (operation, seq) = result statement

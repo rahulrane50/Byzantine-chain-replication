@@ -144,12 +144,6 @@ class Client(process):
         #get the current configuration from Olympus
         get_configuration()
 
-        # send(('GetKeys', id), to=olympus)
-        # await(some(received(('Keys', public_key_map, priv_key,))))
-
-        # send(('GetSigningKeys', id), to=olympus)
-        # await(some(received(('SigningKeys', key, key_map))))
-
         #for all operations in this client's workload, send requests to head
         client_box = Box(priv_key, public_key_map['head'])
         global expected_dict
@@ -164,7 +158,7 @@ class Client(process):
                 expected_dict = val["expected_dict"]
             else:
                 expected_dict = {}
-            client_val = val.get(('client_' + str(id)), None)
+            client_val = val.get(('client_' + str(client_id)), None)
             if client_val:
                 if client_val.get('workload'):
                     client_workload = get_workload(client_val["workload"])[0]
@@ -266,7 +260,7 @@ class Client(process):
         count, verified = verify_results(result, result_proof)
 
         if verified or (count >= t + 1):
-            output('Client',id, ': Result:', result, 'received and verified for operation,', operation)
+            output('Client',client_id, ': Result:', result, 'received and verified for operation,', operation)
         else:
             output("Result statement of replica is not verified hence retransmitting.")
             retransmit_request(operation, identifier.split('_')[1])
@@ -283,7 +277,7 @@ class Client(process):
         # count, verified = verify_results(result, result_proof)
 
         # if verified and count >= t + 1:
-        #     output('Client',id, ': Result:', result, 'received and verified for operation,', operation)
+        #     output('Client',client_id, ': Result:', result, 'received and verified for operation,', operation)
         # else:
         #     output("Result statement of replica :",  'replica_' + str(index), " is not verified hence retransmitting.")
         #     retransmit_request(result_statement.operation, identifier.split('_')[1])
@@ -300,7 +294,7 @@ class Client(process):
         count, verified = verify_results(result, result_proof)
 
         if verified or (count >= t + 1):
-            output('Client',id, ': Result:', result, 'received and verified for operation,', operation)
+            output('Client',client_id, ': Result:', result, 'received and verified for operation,', operation)
         else:
             output("Result statement of replica is not verified hence retransmitting.")
             retransmit_request(operation, identifier.split('_')[1])

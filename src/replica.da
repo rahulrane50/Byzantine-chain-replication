@@ -421,6 +421,7 @@ class Replica(process):
         output('Replica', replica_id, 'Verifying', type, 'proof')
         verified = verify_statement(verify_key_hex_map['head'], statements[0], hashed_result, type)
         if not verified:
+            output("Replica :",replica_id, "Signature verification failed for result proof.")
             return False
 
         index = 1
@@ -535,10 +536,10 @@ class Replica(process):
             failure_error_dict = handle_failure_error(failure_error)
             output("failure error dict :", failure_error_dict)
             if failure_error_dict['result']:
-                output("Injecting result shuttle failure.")
+                output("Replica :",replica_id, "Injecting result shuttle failure.")
                 result = "FAIL"
             elif failure_error_dict['drop_result']:
-                output("Injecting drop head result statement failure.")
+                output("Replica :", replica_id, "Injecting drop result statement failure.")
                 result_shuttle.result_proof.statements.pop(0)
 
         #Validate order proof with previous
@@ -579,6 +580,10 @@ class Replica(process):
     def receive(msg=('ForwardShuttle', forward_shuttle, client_request, client, client_id, sequence_number), from_=replica):
         output('Replica Intermediate:', replica_id, 'shuttle received from previous replica :', forward_shuttle)
         my_index = int(replica_id.split('_')[1])
+        
+        if mode == 'IMMUTABLE':
+            output('Replica :",replica_id, "Immutable, not performing forward shuttle operation.')
+            return
 
         #Check for failure trigger condition
         invalidate_order_statement = False
@@ -624,7 +629,9 @@ class Replica(process):
             output('State of dictionary at', 'replica_' + str(my_index),':', dictionary, 'after operation', operation)
             signed_result_statement = add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')))
 
-            latest_result_stmt[client_id] = signed_result_statement
+            if not client_id in latest_result_stmt:
+                latest_result_stmt[client_id] = {}
+            latest_result_stmt[client_id][(operation, sequence_number)] = signed_result_statement
 
             #send both shuttles to next replica
             if  my_index == len(config) - 2:
@@ -632,7 +639,7 @@ class Replica(process):
             else:                                                                                                                                                           
                 send(('ForwardShuttle', forward_shuttle, client_request, client, client_id, sequence_number), to=config['replica_' + str(my_index + 1)])
 
-            output('Replica', replica_id, 'trying to get from cached results', cached_checkpoint_shuttles)
+            output('Replica', replica_id, 'trying to get cached checkpoint shuttles', cached_checkpoint_shuttles)
 
             # check if any checkpoint shuttle is cached, if yes process it
             if (slot_number == checkpt_interval or slot_number % checkpt_interval == 0) and not slot_number == 0 and len(cached_checkpoint_shuttles) > 0:
@@ -646,8 +653,12 @@ class Replica(process):
 
 
     #Tail Replica
-    def receive(msg=('TailRequest', forward_shuttle, client_request, client, client_id,), from_=replica):
+    def receive(msg=('TailRequest', forward_shuttle, client_request, client, client_id,sequence_number, ), from_=replica):
         output('Replica Tail: shuttle received in tail replica :', forward_shuttle)
+
+        if mode == 'IMMUTABLE':
+            output('Replica :",replica_id, "Immutable, not performing forward shuttle operation.')
+            return
 
         #Check for failure trigger condition
         tmp_replica_id = 'replica_' + str(len(config))
@@ -685,7 +696,9 @@ class Replica(process):
 
             signed_result_statement = add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')), invalidate_result)
 
-            latest_result_stmt[client_id] = signed_result_statement
+            if not client_id in latest_result_stmt:
+                latest_result_stmt[client_id] = {}
+            latest_result_stmt[client_id][(operation, sequence_number)] = signed_result_statement
 
             #the order proof is complete, send result to client
             send(('Result', forward_shuttle.result_proof, result, str(client_id) + '_' + str(sequence_number), operation), to=client)
@@ -703,7 +716,7 @@ class Replica(process):
 
             # check if any checkpoint shuttle is cached, if yes process it
             if (slot_number == checkpt_interval or slot_number % checkpt_interval == 0) and not slot_number == 0 and len(cached_checkpoint_shuttles) > 0:
-                output('Replica', replica_id, 'trying to get from cached results', cached_checkpoint_shuttles)
+                output('Replica', replica_id, 'trying to get cached checkpoint shuttles', cached_checkpoint_shuttles)
                 verified = process_checkpoint_shuttle(cached_checkpoint_shuttles[slot_number], replica_id)
                 del cached_checkpoint_shuttles[slot_number]
                 # except KeyError:
@@ -859,8 +872,10 @@ class Replica(process):
             operation = order_proof.operation
             sequence_number = order_proof.sequence_number
             results.append((result, operation, sequence_number))
+        else:
+            output("No caughtup statements found")
 
-        latest_result_stmt[client_id] = {}
+        #latest_result_stmt[client_id] = {}
         ### WORK IN PROGRESS
         for r in results:
             operation = r[1]
@@ -868,6 +883,8 @@ class Replica(process):
             result    = r[0]
             result_statement = messages.ResultStatement('result', result, sign.generate_hash(result.encode('ascii')), operation)
             signed_result_statement = sign.sign_msg(signing_key, pickle.dumps(result_statement))            
+            if not client_id in latest_result_stmt:
+                latest_result_stmt[client_id] = {}
             latest_result_stmt[client_id][(operation, seq_num)] = signed_result_statement
 
         # result_statement = messages.ResultStatement('result', result, sign.generate_hash(result.encode('ascii')), operation)
@@ -915,7 +932,9 @@ class Replica(process):
             result_proof, signed_result_statement = create_result_proof(result, slot_number, operation, sequence_number, client_id)
             forward_shuttle.add_result_proof(result_proof)
 
-            latest_result_stmt[client_id] = signed_result_statement
+            if not client_id in latest_result_stmt:
+                latest_result_stmt[client_id] = {}
+            latest_result_stmt[client_id][(operation, sequence_number)] = signed_result_statement
             output('Replica Head: Sequence number', sequence_number)
         return forward_shuttle
 
