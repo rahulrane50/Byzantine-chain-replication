@@ -836,7 +836,7 @@ class Replica(process):
         send(('WedgedStatement', signed_wedged_statement, replica_id,), to=olympus)
 
 
-    def receive(msg=('CatchupStatement', catchup_statement, client_id), from_=olympus):
+    def receive(msg=('CatchupStatement', catchup_statement, client_id, sequence_no), from_=olympus):
 # =======
 #     def receive(msg=('CatchupStatement', catchup_statement, sequence_no), from_=olympus):
 # >>>>>>> ea413ec0e772fca4f8c559bc7be96602c0d2c27a
@@ -860,12 +860,16 @@ class Replica(process):
             sequence_number = order_proof.sequence_number
             results.append((result, operation, sequence_number))
 
-        latest_result_stmt[client_id] = []
+        latest_result_stmt[client_id] = {}
         ### WORK IN PROGRESS
         for r in results:
-            result_statement = messages.ResultStatement('result', r[0], sign.generate_hash(result.encode('ascii')), r[1])
-            signed_result_statement = sign.sign_msg(signing_key, pickle.dumps(result_statement))
-            latest_result_stmt[client_id].append((signed_result_statement, r[2]))
+            operation = r[1]
+            seq_num   = r[2]
+            result    = r[0]
+            result_statement = messages.ResultStatement('result', result, sign.generate_hash(result.encode('ascii')), operation)
+            signed_result_statement = sign.sign_msg(signing_key, pickle.dumps(result_statement))            
+            latest_result_stmt[client_id][(operation, seq_num)] = signed_result_statement
+
         # result_statement = messages.ResultStatement('result', result, sign.generate_hash(result.encode('ascii')), operation)
         # signed_result_statement = sign.sign_msg(signing_key, pickle.dumps(result_statement))
         # latest_result_stmt[client_id] = signed_result_statement

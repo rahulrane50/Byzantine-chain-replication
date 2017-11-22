@@ -327,6 +327,99 @@ class Olympus(process):
         return result_proof
 
 
+    def send_result_to_client():
+        ## TO TEST
+        cnt = no_of_replicas
+        t = (no_of_replicas - 1) / 2
+        unsigned_result_stmts = []
+
+        results_to_send = {}
+        statements_list = []
+        # for key, value in result_statements[client_id]:
+        for key, value in result_statements:
+            cnt = no_of_replicas
+            id_client = key
+            op_stmts_dict = value
+            op_seq = None
+            for k, v in op_stmts_dict:
+                op_seq = k
+                id_replica = v[0]
+                signed_statement = v[1]
+                verified_statement = sign.verify_sign(verify_key_hex_map[id_replica], signed_statement)
+                if verified_statement == None:
+                    cnt -= 1
+                else:
+                    try:
+                        results_to_send[k].append(signed_statement)
+                    except KeyError:
+                        results_to_send[k] = []
+                        results_to_send[k].append(signed_statement)
+            if len(results_to_send[op_seq]) >= t + 1:
+                slot = 1
+                operation = op_seq[0]
+                seq_num = op_seq[1]
+                result_proof = messages.Proof(results_to_send[op_seq], 1, key, operation, seq_num, id_client)
+                result_proof.statements = value
+
+                #the order proof is complete, send result to client
+                send(('OlympusResult', result_proof, result, str(client_id) + '_' + str(result_proof.sequence_number), result_proof.operation), to=configuration['config_' + str(current_configuration)][client_id])
+                output("Olympus: sent reply to client", client_id, 'for operation', operation)
+
+        # for key, value in results_to_send:
+        #     if len(value) >= t + 1:
+        #         slot = 1
+        #         operation = key[0]
+        #         seq_num = key[1]
+        #         result_proof = messages.Proof(value[0], 1, key, operation, seq_num, )
+        #         result_proof.statements = value
+
+        #         #the order proof is complete, send result to client
+        #         send(('OlympusResult', result_proof, result, str(client_id) + '_' + str(result_proof.sequence_number), result_proof.operation), to=configuration['config_' + str(current_configuration)][client_id])
+        #         output("Olympus: sent reply to client", client_id, 'for operation', operation)
+
+        # for stmt in result_statements[client_id]:
+        #     statement = stmt[1]
+        #     signed_statement = statement[0]
+        #     verified_statement = sign.verify_sign(verify_key_hex_map[stmt[0]], signed_statement)
+        #     if verified_statement == None:
+        #         cnt -= 1
+        #     else:
+        #         unsigned_result_stmts.append((stmt[0], verified_statement, statement[1]))
+        # # result_proof = messages.Proof(result_statements[client_id][0][1], 1, key, 
+        # # result_statements[client_id][0][2], result_statements[client_id][0][3])
+        # if cnt > t + 1:
+        #     operations = {}
+        #     key = None
+        #     for stmt in unsigned_result_stmts:
+        #         try:
+        #             operations[stmt[1].operation].append(stmt[0])
+        #         except KeyError:
+        #             operations[stmt[1].operation] = []
+        #             operations[stmt[1].operation].append(stmt[0])
+
+        #     if len(operations) == 1:
+        #         key = list(operations.keys())[0]
+        #         if len(operations[key]) >= t + 1:
+        #             result_proof = create_result_proof(key)
+        #     else:
+        #         quorums = []
+        #         for op in operations:
+        #             if len(operations[op]) >= t + 1:
+        #                 quorums.append(operations[op])
+
+        #         statements = result_statements[client_id]
+        #         for index in range(0, len(statements)):
+        #             if not statements[index][0] in quorums[0]:
+        #                 del statements[index]
+
+        #         result_statements[client_id] = statements
+        #     result_proof = create_result_proof()   
+
+        #     #the order proof is complete, send result to client
+        #     send(('OlympusResult', result_proof, result, str(client_id) + '_' + str(result_proof.sequence_number), result_proof.operation), to=configuration['config_' + str(current_configuration)][client_id])
+        #     output("Olympus: sent reply to client", client_id)
+
+
     def receive(msg=('ReconfigurationRequest', reason, operation, sequence_number, client_id, replica_id, ), from_=replica):
         output("Olympus: Received reconfiguration request from", replica_id, "for ", reason,"in operation ", operation)
         longest_running_history = None
@@ -355,65 +448,13 @@ class Olympus(process):
                 #     send(('CatchupStatement', catchup_statement, client_id), to=config[replica_id])
                 # else:
                 #     verified = False
-                    send(('CatchupStatement', catchup_statement, caughtup_seq_no,), to=config[replica_id])
+                    send(('CatchupStatement', catchup_statement, client_id, caughtup_seq_no), to=config[replica_id])
                     caughtup_seq_no += 1
                 else: 
                     verified = False
 
             # await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id,), from_=replica))) == len(config))
-            await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id, latest_result_stmt, client_id, sequence_number), from_=replica))) == len(consistent_replicas))
-
-            # result_statements[client_id].append((replica_id, latest_result_stmt, client_id))
-            # latest_result_stmt[client_id].append((signed_result_statement, r[2]))
-            # statement, slot, operation, sequence_number, client_id):
-
-            ## TO TEST            
-            cnt = no_of_replicas
-            t = (no_of_replicas - 1) / 2
-            unsigned_result_stmts = []
-
-            for stmt in result_statements[client_id]:
-                statement = stmt[1]
-                signed_statement = statement[0]
-                verified_statement = sign.verify_sign(verify_key_hex_map[stmt[0]], signed_statement)
-                if verified_statement == None:
-                    cnt -= 1
-                else:
-                    unsigned_result_stmts.append((stmt[0], verified_statement, statement[1]))
-            # result_proof = messages.Proof(result_statements[client_id][0][1], 1, key, 
-            # result_statements[client_id][0][2], result_statements[client_id][0][3])
-            if cnt > t + 1:
-                operations = {}
-                key = None
-                for stmt in unsigned_result_stmts:
-                    try:
-                        operations[stmt[1].operation].append(stmt[0])
-                    except KeyError:
-                        operations[stmt[1].operation] = []
-                        operations[stmt[1].operation].append(stmt[0])
-
-                if len(operations) == 1:
-                    key = list(operations.keys())[0]
-                    if len(operations[key]) >= t + 1:
-                        result_proof = create_result_proof(key)
-                else:
-                    quorums = []
-                    for op in operations:
-                        if len(operations[op]) >= t + 1:
-                            quorums.append(operations[op])
-
-                    statements = result_statements[client_id]
-                    for index in range(0, len(statements)):
-                        if not statements[index][0] in quorums[0]:
-                            del statements[index]
-
-                    result_statements[client_id] = statements
-                result_proof = create_result_proof()   
-
-                #the order proof is complete, send result to client
-                send(('OlympusResult', result_proof, result, str(client_id) + '_' + str(result_proof.sequence_number), result_proof.operation), to=configuration['config_' + str(current_configuration)][client_id])
-                output("Olympus: sent reply to client", client_id)
-
+            # await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id, latest_result_stmt, client_id, sequence_number), from_=replica))) == len(consistent_replicas))
             # output("Olympus: Received all caughtup statements")
             # verified = check_caughtup_statements(caughtup_statements)
 # =======
@@ -421,7 +462,8 @@ class Olympus(process):
                 #     caughtup_seq_no += 1
                 # else: 
                 #     verified = False
-            if await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id,), from_=replica))) == len(config)):
+            if await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id, latest_result_stmt, client_id, sequence_number), from_=replica))) == len(consistent_replicas)):
+            # if await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id,), from_=replica))) == len(config)):
                 output("Olympus :Received all caughtup statements")
             elif timeout(caughtup_statement_timeout):
                 output("Olympus: Timeout occured for caught up statements.")
@@ -434,6 +476,8 @@ class Olympus(process):
                 #TODO: Need to choose different quorum
                 # if length of consistent_replicas == t+1 and it was not verified, no progress?
                 pass
+
+            send_result_to_client()
 
             output("Olympus :Sending getrunning history request.")
             sequence_no = 0;
@@ -507,11 +551,36 @@ class Olympus(process):
 
     def receive(msg=('CaughtupStatement', hashed_running_state, replica_id, latest_result_stmt, client_id), from_=replica):
         caughtup_statements.append((replica_id, hashed_running_state))
+
+        client_dict = {}
         try:
-            result_statements[client_id].append((replica_id, latest_result_stmt, client_id))
+            client_dict = result_statements[client_id]
         except KeyError:
-            result_statements[client_id] = []
-            result_statements[client_id].append((replica_id, latest_result_stmt, client_id))
+            result_statements[client_id] = client_dict
+
+        # key   = (operation, seq)
+        # value = result statement
+        output('before for loop')
+        for key, value in latest_result_stmt:
+            try:
+                output('in try')
+                result_statements[client_id][key].append((replica_id, value))
+            except KeyError:
+                output('in catch')
+                output('dict :: ', result_statements, ' :: ' ,client_id)
+                output('dict :: ', result_statements[client_id])
+                output('key :: ', key)
+                result_statements[client_id][key] = []
+                output('after empty list')
+            result_statements[client_id][key].append((replica_id, value))
+            output('after appending')
+        # try:
+        #     # latest_result_stmt is a dict of the form
+        #     # (operation, seq) = result statement
+        #     result_statements[client_id].append((replica_id, latest_result_stmt, client_id))
+        # except KeyError:
+        #     result_statements[client_id] = {}
+        #     result_statements[client_id][replica_id] = latest_result_stmt, client_id
 
 
     def receive(msg=('RunningState', running_state,replica_id,), from_=replica):
@@ -524,6 +593,7 @@ class Olympus(process):
         else:
             output("Hash value of running state received not matched with caughtup messages hashed running state value")
  
+
     def check_wedged_statements(wedged_statements):
         count = no_of_replicas
         t = int((no_of_replicas - 1)/2)
