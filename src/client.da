@@ -76,9 +76,9 @@ def verify_result_statement(verify_key, statement, hashed_result):
     return verified, result_statement
 
 
-def verify_expected_result(id, expected_dict):
+def verify_expected_result(client_id, expected_dict):
     verified = True
-    fname = "testcase_" + str(id) + "_result.txt"
+    fname = "testcase_" + str(client_id) + "_result.txt"
     testing_file = open(fname, "rb")    
     actual_dict = pickle.load(testing_file)
     if (set(actual_dict.keys()) != set(expected_dict.keys())):
@@ -105,8 +105,8 @@ def check_timeout(client_timeout, reset=False):
 
 
 class Client(process):
-    def setup(client_timeout:int, id: int, olympus:olympus.Olympus, testing_scenarios:dict, num_replicas:int):
-        output('Client', id, ': setup')
+    def setup(client_timeout:int, client_id: int, olympus:olympus.Olympus, testing_scenarios:dict, num_replicas:int):
+        output('Client', client_id, ': setup')
         self.configuration = {}
         self.public_key_map = {}
         self.priv_key = None
@@ -127,19 +127,19 @@ class Client(process):
     def get_configuration():
         #get the current configuration from Olympus
         clk = logical_clock()
-        output('Client', id, ': requesting configuration from Olympus')
-        send(('GetConfiguration', id), to=olympus)        
+        output('Client', client_id, ': requesting configuration from Olympus')
+        send(('GetConfiguration', client_id), to=olympus)        
         await(some(received(('Configuration', configuration, config_id,), clk=rclk), has=(rclk > clk)))
         
-        send(('GetKeys', id), to=olympus)
+        send(('GetKeys', client_id), to=olympus)
         await(some(received(('Keys', public_key_map, priv_key,), clk=rclk), has=(rclk > clk)))
 
-        send(('GetSigningKeys', id), to=olympus)
+        send(('GetSigningKeys', client_id), to=olympus)
         await(some(received(('SigningKeys', key, key_map), clk=rclk), has=(rclk > clk)))
 
 
     def run():
-        output('Client', id, ': running')
+        output('Client', client_id, ': running')
 
         #get the current configuration from Olympus
         get_configuration()
@@ -171,15 +171,15 @@ class Client(process):
             output("client workload :", client_workload)
             for operation in client_workload:
                 if not operation == '':
-                    signed_operation = sign.sign_msg(signing_key, operation)
+                    signed_operation = sign.sign_msg(signing_key, pickle.dumps((operation, sequence_number, client_id)))
                     encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
                     retransmit_req = False
                     retransmit=val.get("retransmit_request")
                     if retransmit:
-                        if id == retransmit[0] and sequence_number == retransmit[1]:
+                        if client_id == retransmit[0] and sequence_number == retransmit[1]:
                             retransmit_req = True
-                    send(('ClientRequest', encrypted_operation, operation_hex, sequence_number, id, retransmit_req,), to=configuration['head'])
-                    requests_info[(id, sequence_number)] = time.time()
+                    send(('ClientRequest', encrypted_operation, operation_hex, client_id, retransmit_req,), to=configuration['head'])
+                    requests_info[(client_id, sequence_number)] = time.time()
                     sequence_number += 1
                     if perform_op:
                         result = operations.perform_operation(operation, expected_dict)
@@ -191,17 +191,17 @@ class Client(process):
                     output('Configuration present with client ', configuration)
                     received_result = retransmit_request(operation, seqno)
                     if(not received_result):
-                        output("Client", id, ": timed out again while waiting for result of operation,", operation, ". Retransmitting..")
+                        output("Client", client_id, ": timed out again while waiting for result of operation,", operation, ". Retransmitting..")
                         received_result = retransmit_request(operation, seqno)
                         output('Configuration present with client ', configuration)
                 else:
                     output('result received')
             elif timeout(client_timeout):
-                output('Client', id, ': timed out waiting for result, resending request')
+                output('Client', client_id, ': timed out waiting for result, resending request')
                 retransmit_request(operation, seqno)
 
 
-            verified = verify_expected_result(id, expected_dict)
+            verified = verify_expected_result(client_id, expected_dict)
             if verified: 
                 output("Actual result matching with expected result")
             else:
@@ -213,18 +213,18 @@ class Client(process):
             clk = logical_clock()
             signed_operation = sign.sign_msg(signing_key, operation)
             encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
-            send(('ClientRequest', encrypted_operation, operation_hex, sequence_number, id), to=configuration['head'])
+            send(('ClientRequest', encrypted_operation, operation_hex, sequence_number, client_id), to=configuration['head'])
             sequence_number += 1
 
             if await(some(received(('Result', result_proof, result, identifier,), clk=rclk), has=(rclk > clk))):
-                output('Client', id, ': received result')
+                output('Client', client_id, ': received result')
             elif timeout(client_timeout):
-                output('Client', id, ': timed out waiting for result, resending request')
+                output('Client', client_id, ': timed out waiting for result, resending request')
 
 
     def receive(msg=('Configuration', config, config_id), from_=olympus):
         configuration = config
-        output('Client', id, ':received configuration from Olympus', configuration, '. Configuration no: ', config_id)
+        output('Client', client_id, ':received configuration from Olympus', configuration, '. Configuration no: ', config_id)
     
     def verify_results(result, result_proof):
         count = num_replicas
@@ -236,7 +236,7 @@ class Client(process):
         verified, result_statement = verify_result_statement(verify_key_hex_map['head'], result_statements[0], hashed_result)
         if verified:
             results.append(result)
-        
+
         index = 1
         for statement in result_statements[1:-1]:
             verified, result_statement = verify_result_statement(verify_key_hex_map['replica_'+str(index)], statement, hashed_result)
@@ -253,25 +253,42 @@ class Client(process):
 
 
     def receive(msg=('Result', result_proof, result, identifier, operation,), from_=tail):
-        output('Client', id,'received result shuttle', result_proof, result)
+        output('Client', client_id,'received result shuttle', result_proof, result)
         if len(identifier.split('_')) == 3 and identifier.split('_')[2] == 'resent':
-            output('Client', id,'received result for restransmitted request', identifier.split('_')[1])
+            output('Client', client_id,'received result for restransmitted request', identifier.split('_')[1])
         count = num_replicas
         t = (num_replicas - 1)/2
         #verify hash
         count, verified = verify_results(result, result_proof)
 
         if verified and count >= t + 1:
-            output('Client',id, ': Result:', result, 'received and verified for operation,', operation)
+            output('Client',client_id, ': Result:', result, 'received and verified for operation,', operation)
         else:
             output("Result statement of replica :",  'replica_' + str(index), " is not verified hence retransmitting.")
             retransmit_request(result_statement.operation, identifier.split('_')[1])
 
 
-    def receive(msg=('RetransmitResult', result_proof, result, identifier, operation,), from_=tail):
-        output('Client', id,'received result shuttle', result_proof, result)
+    def receive(msg=('OlympusResult', result_proof, result, identifier, operation,), from_=olympus):
+        output('Client', client_id,'received result shuttle from olympus', result_proof, result)
         if len(identifier.split('_')) == 3 and identifier.split('_')[2] == 'resent':
-            output('Client', id,'received result for restransmitted request', identifier.split('_')[1])
+            output('Client', client_id,'received result for restransmitted request', identifier.split('_')[1])
+        output('Client',client_id, ': Result:', result, 'received for operation from Olympus,', operation)
+        # count = num_replicas
+        # t = (num_replicas - 1)/2
+        # #verify hash
+        # count, verified = verify_results(result, result_proof)
+
+        # if verified and count >= t + 1:
+        #     output('Client',id, ': Result:', result, 'received and verified for operation,', operation)
+        # else:
+        #     output("Result statement of replica :",  'replica_' + str(index), " is not verified hence retransmitting.")
+        #     retransmit_request(result_statement.operation, identifier.split('_')[1])
+
+
+    def receive(msg=('RetransmitResult', result_proof, result, identifier, operation,), from_=tail):
+        output('Client', client_id,'received result shuttle', result_proof, result)
+        if len(identifier.split('_')) == 3 and identifier.split('_')[2] == 'resent':
+            output('Client', client_id,'received result for restransmitted request', identifier.split('_')[1])
 
         count = num_replicas
         t = (num_replicas - 1)/2
@@ -279,7 +296,7 @@ class Client(process):
         count, verified = verify_results(result, result_proof)
 
         if verified and count >= t + 1:
-            output('Client',id, ': Result:', result, 'received and verified for operation,', operation)
+            output('Client',client_id, ': Result:', result, 'received and verified for operation,', operation)
         else:
             output("Result statement of replica :",  'replica_' + str(index), " is not verified hence retransmitting.")
             retransmit_request(result_statement.operation, identifier.split('_')[1])
@@ -287,7 +304,7 @@ class Client(process):
 
     # replicas reply with error statement if they are immutable
     def receive(msg=('ErrorStatement', replica_id,), from_=replica):
-        output('Client ', id, 'received error statement from replica', replica_id)
+        output('Client ', client_id, 'received error statement from replica', replica_id)
         # get new configuration from olympus        
         if not new_config:
             get_configuration()
@@ -299,39 +316,40 @@ class Client(process):
     def receive(msg=('Keys', key_map, key), from_=olympus):
         public_key_map = key_map
         priv_key = key
-        output('Client', id, ':received keys from Olympus')
+        output('Client', client_id, ':received keys from Olympus')
 
 
     def receive(msg=('SigningKeys', key, key_map), from_=olympus):
         self.verify_key_hex_map = key_map
         self.signing_key = key
 
-        output('Client', id, ':received signing keys from Olympus')
+        output('Client', client_id, ':received signing keys from Olympus')
 
 
     def retransmit_request(operation, sequence_number):
         index = 0
         received_result = False
         client_box = Box(priv_key, public_key_map['head'])
-        signed_operation = sign.sign_msg(signing_key, operation)
+
+        signed_operation = sign.sign_msg(signing_key, pickle.dumps((operation, sequence_number, client_id)))
         encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
-        send(('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, id), to=configuration['head'])
+        send(('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, client_id), to=configuration['head'])
 
         for index in range(1, len(configuration) - 1):
             client_box = Box(priv_key, public_key_map['replica_' + str(index)])
             encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)          
-            send(('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, id), to=configuration['replica_' + str(index)])
+            send(('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, client_id), to=configuration['replica_' + str(index)])
 
         client_box = Box(priv_key, public_key_map['tail'])
-        signed_operation = sign.sign_msg(signing_key, operation)
+        # signed_operation = sign.sign_msg(signing_key, operation)
         encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
-        send(('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, id), to=configuration['tail'])
+        send(('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, client_id), to=configuration['tail'])
 
-        if await(some(received(('RetransmitResult', result_proof, result, identifier, operation,)), has=(identifier == str(id) + '_' + str(sequence_number) + '_' + 'resent'))):
-            output('Client', id, ': Result:', result, 'received and verified for retransmitted operation,', operation)
+        if await(some(received(('RetransmitResult', result_proof, result, identifier, operation,)), has=(identifier == str(client_id) + '_' + str(sequence_number) + '_' + 'resent'))):
+            output('Client', client_id, ': Result:', result, 'received and verified for retransmitted operation,', operation)
             received_result = True
         elif timeout(client_timeout):
-            output('Client', id, ': timed out waiting for result of retransmitted operation,', operation, 'resending request')
+            output('Client', client_id, ': timed out waiting for result of retransmitted operation,', operation, 'resending request')
 
         return received_result
 

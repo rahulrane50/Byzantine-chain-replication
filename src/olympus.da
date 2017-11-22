@@ -17,6 +17,8 @@ replica = import_da('replica')
 client  = import_da('client')
 sign = import_da('sign')
 config_file = import_da('read_config_file')
+messages = import_da('messages')
+
 
 def generate_pub_priv_keys():
     priv_key = PrivateKey.generate()
@@ -45,6 +47,8 @@ class Olympus(process):
         self.caughtup_statements = []
         self.verified_running_state = False
         self.send_config_client = False
+        self.result_statements = {}
+
 
     def create_keys(reconfig):
         public_old_keys = sign.generate_hash(pickle.dumps(public_key_map))
@@ -111,7 +115,7 @@ class Olympus(process):
         return True
 
 
-    def verify_history(histories, set_of_quorums):
+    def verify_history(histories, checkpoint_proofs):
         longest_running_history = []
         verified = True
         longest_running_hist_replica = -1
@@ -121,12 +125,35 @@ class Olympus(process):
         t = (no_of_replicas - 1)/2
         consistent_replicas = {}
         incorrect_longest_hist_replica = []
+        checkpoint_slots = {}
+        slots_to_consider = []
+
+        ## TO TEST
+        # include checkpoint verification
+        # completed checkpoint proof maybe dropped, so longest history might be for a replica which did not see the checkpoint proof
+        # but if more than t+1 replicas have seen the checkpoint proof then, choose the longest history from them
+        for key, value in checkpoint_proofs.items():
+            proof = value
+            if not proof == None:
+                try:
+                    checkpoint_slots[proof.slot] += 1
+                except KeyError:
+                    checkpoint_slots[proof.slot] = 1
+
+        if len(checkpoint_slots) > 1:
+            for key, value in checkpoint_slots.items():
+                if value >= t + 1:
+                    slots_to_consider.append(key)
 
         while(cnt < t + 1):
             for replica_id, history in histories:
                 if len(history) > len(longest_running_history) and not replica_id in incorrect_longest_hist_replica:
-                    longest_running_history = history
-                    longest_running_hist_replica = replica_id
+                    if not len(checkpoint_proofs) > 1:
+                        longest_running_history = history
+                        longest_running_hist_replica = replica_id
+                    elif len(checkpoint_proofs) > 1 and checkpoint_proofs[replica_id].slot in slots_to_consider:
+                        longest_running_history = history
+                        longest_running_hist_replica = replica_id
 
             output("Olympus: Found longest running history for replica ", longest_running_hist_replica," as : ", longest_running_history)
             # consistent_replicas.append((longest_running_hist_replica, longest_running_history))
@@ -284,10 +311,23 @@ class Olympus(process):
             send(('OlympusRequest', anymsg), to=replica)
 
 
+    def create_result_proof():
+        # result_statements[client_id][0][1][0] == signed result statement
+        # result_statements[client_id][0][1][1] == sequence number
+        # result_statements[client_id][0][3] == client id
+        result_proof = messages.Proof(result_statements[client_id][0][1][0], 1, key, result_statements[client_id][0][1][1], result_statements[client_id][0][3])
+
+        statements = result_statements[client_id]
+        for index in range(1, len(statements)):
+            result_proof.add_statement(statements[index][1])
+
+        return result_proof
+
+
     def receive(msg=('ReconfigurationRequest', reason, operation, sequence_number, client_id, replica_id, ), from_=replica):
         output("Olympus: Received reconfiguration request from", replica_id, "for ", reason,"in operation ", operation)
         longest_running_history = None
-
+ 
         if not reconfiguring:
             reconfiguring = True
             config = configuration['config_' + str(current_configuration)]
@@ -308,13 +348,65 @@ class Olympus(process):
                     catchup_statement = longest_running_history[len(verified_statement.history):]
                     #send catchup statement
                     output("Olympus : Sending catchup statement to replica ", replica_id)
-                    send(('CatchupStatement', catchup_statement), to=config[replica_id])
+                    send(('CatchupStatement', catchup_statement, client_id), to=config[replica_id])
                 else:
                     verified = False
             # await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id,), from_=replica))) == len(config))
-            await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id,), from_=replica))) == len(consistent_replicas))
-            output("Olympus :Received all caughtup statements")
-            verified = check_caughtup_statements(caughtup_statements) 
+            await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id, latest_result_stmt, client_id, sequence_number), from_=replica))) == len(consistent_replicas))
+
+            # result_statements[client_id].append((replica_id, latest_result_stmt, client_id))
+            # latest_result_stmt[client_id].append((signed_result_statement, r[2]))
+            # statement, slot, operation, sequence_number, client_id):
+
+            ## TO TEST            
+            cnt = no_of_replicas
+            t = (no_of_replicas - 1) / 2
+            unsigned_result_stmts = []
+
+            for stmt in result_statements[client_id]:
+                statement = stmt[1]
+                signed_statement = statement[0]
+                verified_statement = sign.verify_sign(verify_key_hex_map[stmt[0]], signed_statement)
+                if verified_statement == None:
+                    cnt -= 1
+                else:
+                    unsigned_result_stmts.append((stmt[0], verified_statement, statement[1]))
+            # result_proof = messages.Proof(result_statements[client_id][0][1], 1, key, 
+            # result_statements[client_id][0][2], result_statements[client_id][0][3])
+            if cnt > t + 1:
+                operations = {}
+                key = None
+                for stmt in unsigned_result_stmts:
+                    try:
+                        operations[stmt[1].operation].append(stmt[0])
+                    except KeyError:
+                        operations[stmt[1].operation] = []
+                        operations[stmt[1].operation].append(stmt[0])
+
+                if len(operations) == 1:
+                    key = list(operations.keys())[0]
+                    if len(operations[key]) >= t + 1:
+                        result_proof = create_result_proof(key)
+                else:
+                    quorums = []
+                    for op in operations:
+                        if len(operations[op]) >= t + 1:
+                            quorums.append(operations[op])
+
+                    statements = result_statements[client_id]
+                    for index in range(0, len(statements)):
+                        if not statements[index][0] in quorums[0]:
+                            del statements[index]
+
+                    result_statements[client_id] = statements
+                result_proof = create_result_proof()   
+
+                #the order proof is complete, send result to client
+                send(('OlympusResult', result_proof, result, str(client_id) + '_' + str(result_proof.sequence_number), result_proof.operation), to=configuration['config_' + str(current_configuration)][client_id])
+                output("Olympus: sent reply to client", client_id)
+
+            output("Olympus: Received all caughtup statements")
+            verified = check_caughtup_statements(caughtup_statements)
             if verified:
                 output("All replicas caught up messages matched successfully.")
             else:
@@ -386,9 +478,14 @@ class Olympus(process):
         output("Olympus received wedge statement from replica ", replica_id)
         wedged_statements.append((replica_id, wedged_statement))
 
-    
-    def receive(msg=('CaughtupStatement', hashed_running_state, replica_id,), from_=replica):
+
+    def receive(msg=('CaughtupStatement', hashed_running_state, replica_id, latest_result_stmt, client_id), from_=replica):
         caughtup_statements.append((replica_id, hashed_running_state))
+        try:
+            result_statements[client_id].append((replica_id, latest_result_stmt, client_id))
+        except KeyError:
+            result_statements[client_id] = []
+            result_statements[client_id].append((replica_id, latest_result_stmt, client_id))
 
 
     def receive(msg=('RunningState', running_state,replica_id,), from_=replica):
@@ -405,13 +502,13 @@ class Olympus(process):
         error = False
         valid_signatures = []
         histories = []
-        checkpoint_proofs = []
+        checkpoint_proofs = {}
         running_states = []
         set_of_quorums = []
 
-        replicas = list(configuration['config_' + str(current_configuration)].keys())
-        set_of_quorums = list(itertools.combinations(replicas, t+1))
-        output('quorums', set_of_quorums)
+        # replicas = list(configuration['config_' + str(current_configuration)].keys())
+        # set_of_quorums = list(itertools.combinations(replicas, t+1))
+        # output('quorums', set_of_quorums)
 
         for element in wedged_statements:
             if count < t + 1:
@@ -426,7 +523,8 @@ class Olympus(process):
             if verified_statement:
                 verified_statement = pickle.loads(verified_statement)
                 histories.append((replica_id, verified_statement.history))
-                checkpoint_proofs.append((replica_id, verified_statement.checkpoint_proof))
+                if not verified_statement.checkpoint_proof == None:
+                    checkpoint_proofs[replica_id] = verified_statement.checkpoint_proof
                 running_states.append((replica_id, verified_statement.running_state))
                 valid_signatures.append(replica_id)
             else:
@@ -435,7 +533,7 @@ class Olympus(process):
         verified = False
         if not error:
             output("Olympus sign verified for all wedge statements.")
-            verified, longest_running_history, consistent_replicas = verify_history(histories, set_of_quorums)
+            verified, longest_running_history, consistent_replicas = verify_history(histories, checkpoint_proofs)
             # get history with maximum length from list
             # for all histories, check that the slot and operation upto the common prefix are equal
             # find t+1 equal histories and choose as quorum
@@ -462,6 +560,11 @@ class Olympus(process):
         for replica_itr in list_of_replicas[1:-1]:
             configuration['config_' + str(current_configuration)]['replica_' + str(index)] = replica_itr
             index += 1
+
+        # copy client information from the previous configuration map
+
+
+
         return configuration['config_' + str(current_configuration)]
 
 

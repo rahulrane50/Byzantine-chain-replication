@@ -43,6 +43,6 @@ def verify_msg(encrypted_msg, replica_box, msg_hash, verify_key_hex):
         ret = sodium_memcmp(recvd_msg_hash, msg_hash)
         if not ret:
             return None
-        return verified_msg
+        return verified_msg, recvd_msg
     except nacl.exceptions.CryptoError:
         return None

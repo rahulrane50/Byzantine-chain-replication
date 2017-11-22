@@ -71,9 +71,9 @@ class Replica(process):
         self.inprogress_operations = {}
         self.count = 0
         self.request_forwarded = False
-        
-        # time in seconds after which head initiates checkpoint, periodically
-        self.checkpoint_time = 30
+
+        self.latest_result_stmt = {}
+
         #store latest checkpoint proof, this will be included in the wedged statement
         self.checkpoint_proof = None
         self.state_to_save = {}
@@ -95,7 +95,7 @@ class Replica(process):
         checkpoint_statement = messages.CheckpointStatement('checkpoint', hashed_running_state)
         signed_stmt = sign.sign_msg(signing_key, pickle.dumps(checkpoint_statement))
 
-        checkpoint_proof = messages.Proof(signed_stmt, slot_number, None)
+        checkpoint_proof = messages.Proof(signed_stmt, slot_number, None, None, None)
 
         checkpoint_shuttle = messages.Shuttle(None, 'head', config['replica_1'], None)
         checkpoint_shuttle.add_checkpoint_proof(checkpoint_proof)
@@ -223,7 +223,7 @@ class Replica(process):
         Methods for shuttles
     """""""""""""""""""""""""""
     #replica head: add operation at that slot
-    def order_operation(operation, client):
+    def order_operation(operation, client, client_id, sequence_number):
         forward_shuttle = None
         slot_number = slot_number + 1
         verified = check_history(history, slot_number, operation, replica_id)
@@ -234,7 +234,7 @@ class Replica(process):
             order_statement = messages.OrderStatement('order', slot_number, operation)    # <'order', slot, operation>
             signed_order_statement = sign.sign_msg(signing_key, pickle.dumps(order_statement))
 
-            order_proof = messages.Proof(signed_order_statement, slot_number, operation)
+            order_proof = messages.Proof(signed_order_statement, slot_number, operation, sequence_number, client_id)
 
             forward_shuttle = messages.Shuttle(order_proof, 'head', config['replica_1'], client)
             history.append(order_proof)
@@ -324,10 +324,9 @@ class Replica(process):
             history.append(order_proof)
 
             output('Replica', replica_id, 'performing operation', operation, ' dictionary previously', dictionary, 'slot number now', slot_number)
-            # if slot_number == checkpt_interval:
+
             if slot_number == checkpt_interval or slot_number % checkpt_interval == 0 and not slot_number == 0:
                 state_to_save[slot_number] = dictionary.copy()
-                # state_to_save = dictionary
                 output('Replica', replica_index, 'Dictionary being saved', state_to_save, dictionary, 'time:: ', datetime.datetime.now())
 
         else:
@@ -409,14 +408,14 @@ class Replica(process):
 
 
     #create result shuttle, done by the head replica
-    def create_result_proof(result, slot, operation):
+    def create_result_proof(result, slot, operation, sequence_number, client_id):
         hashed_result = sign.generate_hash(result.encode('ascii'))
         result_statement = messages.ResultStatement('result', result, hashed_result, operation)
 
         #TO-DO: sign result statement before adding to proof
         signed_result_statement = sign.sign_msg(signing_key, pickle.dumps(result_statement))
-        result_proof = messages.Proof(signed_result_statement, slot, operation)
-        return result_proof
+        result_proof = messages.Proof(signed_result_statement, slot, operation, sequence_number, client_id)
+        return result_proof, signed_result_statement
 
 
     #add result statement to result proof contained in the result shuttle
@@ -426,7 +425,7 @@ class Replica(process):
         signed_result_statement = sign.sign_msg(signing_key, pickle.dumps(result_statement))
         result_proof = shuttle.result_proof
         result_proof.add_statement(signed_result_statement)
-
+        return signed_result_statement
 
     #cache result and result shuttle at each replica
     def cache_result(result_shuttle, result, client, sequence_number, client_id):
@@ -436,8 +435,12 @@ class Replica(process):
     """""""""""""""""""""""""""
         Receive Handlers
     """""""""""""""""""""""""""
+
+    # send the decrypted signed operation to the next replica
+    # don't send the encrypted operation, it has been encrypted with head's public key
+
     #Head Replica
-    def receive(msg=('ClientRequest', encrypted_operation, operation_hex, sequence_number, client_id, retransmit_req, ), from_=client):
+    def receive(msg=('ClientRequest', client_request, operation_hex, client_id, retransmit_req,), from_=client):
         if mode == 'IMMUTABLE':
             output('Replica head: Immutable, sending error to client')
             send(('ErrorStatement', replica_id,), to=client)
@@ -445,8 +448,13 @@ class Replica(process):
             replica_box = Box(priv_key, public_key_map['client_'+ str(client_id)])
 
             #verify that the operation really came from that particular client
-            operation = sign.verify_msg(encrypted_operation, replica_box, operation_hex,
-            verify_key_hex_map['client_'+str(client_id)])
+            # (operation, sequence_number, client_id)  = sign.verify_msg(encrypted_operation, replica_box, operation_hex,
+            # verify_key_hex_map['client_'+str(client_id)])
+            verified_obj, received_msg  = sign.verify_msg(client_request, replica_box, operation_hex,
+            verify_key_hex_map['client_' + str(client_id)])
+
+            operation, sequence_number, s_client_id = pickle.loads(verified_obj)
+
             if not operation == None:
                 output("Replica Head: operation received from client :", operation)
 
@@ -459,12 +467,12 @@ class Replica(process):
                 if failure_error and failure_error_dict['operation']:
                     operation = failure_error_dict['operation']
                     output("Injecting failure change operation on head replica")
-                
+
                 forward_shuttle = start_new_operation(operation, client, client_id, sequence_number)
 
                 #send the forward shuttle, result shuttle to the next replica
                 if not retransmit_req and not forward_shuttle == None:
-                    send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_1'])
+                    send(('ForwardShuttle', forward_shuttle, received_msg, client, client_id, sequence_number), to=config['replica_1'])
                 elif forward_shuttle == None:
                     output('Replica', replica_id, 'Incorrect behaviour detected. Send reconfiguration request to Olympus')
                     send(('ReconfigurationRequest', 'invalid order proof at head', operation, sequence_number, client_id, replica_id,), to=olympus)
@@ -489,7 +497,6 @@ class Replica(process):
                 output("Injecting drop head result statement failure.")
                 result_shuttle.result_proof.statements.pop(0)
 
-
         #Validate order proof with previous
         verified = verify_proof(result_shuttle.result_proof, result.encode('ascii'), 'result')
         if not verified:
@@ -503,7 +510,6 @@ class Replica(process):
             #cache result and result shuttle
             cache_result(result_shuttle, result, client, sequence_number, client_id)
             output('Replica', replica_id, ': cached result', cache)
-
             #send result shuttle to the previous replica
             if replica_id == 'head':
                 return
@@ -524,8 +530,9 @@ class Replica(process):
             except KeyError:
                 pass
 
+
     #Intermediate replicas
-    def receive(msg=('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), from_=replica):
+    def receive(msg=('ForwardShuttle', forward_shuttle, client_request, client, client_id, sequence_number), from_=replica):
         output('Replica Intermediate:', replica_id, 'shuttle received from previous replica :', forward_shuttle)
         my_index = int(replica_id.split('_')[1])
 
@@ -541,7 +548,19 @@ class Replica(process):
                 output("Injecting drop head result statement failure.")
                 result_shuttle.result_proof.statements.pop(0)
 
+        unsigned_obj = sign.verify_sign(verify_key_hex_map['client_' + str(client_id)], client_request)
+        operation, sequence_number, s_client_id = pickle.loads(unsigned_obj)
 
+        # replica_box = Box(priv_key, public_key_map['client_'+ str(client_id)])
+        # #verify that the operation really came from that particular client        
+
+        # output('Before verify')
+        # verified_obj  = sign.verify_msg(client_request, replica_box, operation_hex,
+        # verify_key_hex_map['client_'+str(client_id)])
+        # output('after verify')
+
+        # operation, sequence_number, s_client_id = pickle.loads(verified_obj)
+        # output('after loading')
         #add order statement to the order proof in the shuttle
         success = add_order_statement(forward_shuttle, operation, my_index)
         if success:
@@ -551,13 +570,15 @@ class Replica(process):
             #applying operation to running state and add result statement to the result shuttle
             result = operations.perform_operation(operation, dictionary)
             output('State of dictionary at', 'replica_' + str(my_index),':', dictionary, 'after operation', operation)
-            add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')))
+            signed_result_statement = add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')))
+
+            latest_result_stmt[client_id] = signed_result_statement
 
             #send both shuttles to next replica
             if  my_index == len(config) - 2:
-                send(('TailRequest', forward_shuttle, operation, client, sequence_number, client_id,), to=config['tail'])
+                send(('TailRequest', forward_shuttle, client_request, client, client_id, sequence_number), to=config['tail'])
             else:                                                                                                                                                           
-                send(('ForwardShuttle', forward_shuttle, operation, client, sequence_number, client_id,), to=config['replica_' + str(my_index + 1)])
+                send(('ForwardShuttle', forward_shuttle, client_request, client, client_id, sequence_number), to=config['replica_' + str(my_index + 1)])
 
             output('Replica', replica_id, 'trying to get from cached results', cached_checkpoint_shuttles)
 
@@ -573,7 +594,7 @@ class Replica(process):
 
 
     #Tail Replica
-    def receive(msg=('TailRequest', forward_shuttle, operation, client, sequence_number, client_id,), from_=replica):
+    def receive(msg=('TailRequest', forward_shuttle, client_request, client, client_id,), from_=replica):
         output('Replica Tail: shuttle received in tail replica :', forward_shuttle)
 
         #Check for failure trigger condition
@@ -582,6 +603,16 @@ class Replica(process):
         output("failure_error :", failure_error)
         if failure_error:
             failure_error_dict = handle_failure_error(failure_error)
+
+        unsigned_obj = sign.verify_sign(verify_key_hex_map['client_' + str(client_id)], client_request)
+        operation, sequence_number, s_client_id = pickle.loads(unsigned_obj)
+
+        # replica_box = Box(priv_key, public_key_map['client_'+ str(client_id)])
+        # #verify that the operation really came from that particular client        
+        # verified_obj  = sign.verify_msg(client_request, replica_box, operation_hex,
+        # verify_key_hex_map['client_'+str(client_id)])
+
+        # operation, sequence_number, s_client_id = pickle.loads(verified_obj)
 
         # add order statement to the order proof in the shuttle
         # 3rd arg here is len(configuration) instead of 'tail', b/c we loop
@@ -594,7 +625,9 @@ class Replica(process):
             #applying operation to running state and add result statement to the result shuttle
             result = operations.perform_operation(operation, dictionary)
             output('State of dictionary at Tail:', dictionary)
-            add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')))
+            signed_result_statement = add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')))
+
+            latest_result_stmt[client_id] = signed_result_statement
 
             #the order proof is complete, send result to client
             send(('Result', forward_shuttle.result_proof, result, str(client_id) + '_' + str(sequence_number), operation), to=client)
@@ -629,8 +662,12 @@ class Replica(process):
             send(('ErrorStatement', replica_id,), to=client)
 
         replica_box = Box(priv_key, public_key_map['client_' + str(client_id)])
-        
-        operation = sign.verify_msg(encrypted_operation, replica_box, operation_hex, verify_key_hex_map['client_'+ str(client_id)])
+
+        # operation = sign.verify_msg(encrypted_operation, replica_box, operation_hex, verify_key_hex_map['client_'+ str(client_id)])
+        verified_obj, received_msg = sign.verify_msg(encrypted_operation, replica_box, operation_hex, verify_key_hex_map['client_'+ str(client_id)])
+        output('Before load', verified_obj)
+        operation, sequence_number, s_client_id = pickle.loads(verified_obj)
+        output('After load')
         if not operation == None:
             output('Replica', replica_id,': retransmit request received from client for operation:', operation.encode('ascii'), 'sequence number:', sequence_number)
             output('Replica', replica_id, ': and cache is', cache)
@@ -640,10 +677,11 @@ class Replica(process):
                 result_proof = result[0].result_proof
                 output('Replica', replica_id, ': sending result for retransmitted request with sequence number', sequence_number)
                 send(('RetransmitResult', result_proof, result[1], str(client_id) + '_' + str(sequence_number) + '_' + 'resent', operation), to=client)
+
             elif result == None and not replica_id == 'head': #if result not found in cache, forward to head
                 output('Replica', replica_id, 'did not find result cached. Forwarding request to head..')
-                send(('ForwardRequest', operation, sequence_number, client_id, client, replica_id), to=config['head'])
-                inprogress_operations[(client_id, sequence_number, operation)]  = time.time()
+                send(('ForwardRequest', received_msg, sequence_number, client_id, client, replica_id), to=config['head'])
+                inprogress_operations[(client_id, sequence_number, operation)] = time.time()
 
                 #poll timeout here
                 if await(get_result(client_id, sequence_number)):
@@ -667,7 +705,7 @@ class Replica(process):
 
 
     #handler for retransmitted requests forwarded from other replicas to head
-    def receive(msg=('ForwardRequest', operation, sequence_number, client_id, client, replica_id), from_=replica):
+    def receive(msg=('ForwardRequest', client_request, sequence_number, client_id, client, replica_id), from_=replica):
         output('Replica head received forwarded retransmitted request from Replica', replica_id)
         result = cache.get(str(client_id) + '_' + str(sequence_number))
         timed_out = False
@@ -679,6 +717,10 @@ class Replica(process):
             output('Replica', replica_id, ': sending result for retransmitted request with sequence number', sequence_number)
             send(('RetransmitResult', result_proof, result[1], str(client_id) + '_' + str(sequence_number) + '_' + 'resent', operation), to=client)
         else:
+            unsigned_obj = sign.verify_sign(verify_key_hex_map['client_' + str(client_id)], client_request)
+            output('Before load in fwd req')
+            operation, sequence_number, s_client_id = pickle.loads(unsigned_obj)
+            output('After load in fwd req')
             for order_proof in history:
                 try:
                     value = inprogress_operations[(client_id, sequence_number, operation)]
@@ -725,16 +767,34 @@ class Replica(process):
         send(('WedgedStatement', signed_wedged_statement, replica_id,), to=olympus)
 
 
-    def receive(msg=('CatchupStatement', catchup_statement), from_=olympus):
+    def receive(msg=('CatchupStatement', catchup_statement, client_id), from_=olympus):
         output("Replica ", replica_id, ":Received catchup statement :", catchup_statement)
         output("Before: State of dictionary :", dictionary)
+        # result = None
+        # operation = None
+        # sequence_number = None
+        results = []
         for order_proof in catchup_statement:
             result = operations.perform_operation(order_proof.operation, dictionary)
+            operation = order_proof.operation
+            sequence_number = order_proof.sequence_number
+            results.append((result, operation, sequence_number))
+
+        latest_result_stmt[client_id] = []
+        ### WORK IN PROGRESS
+        for r in results:
+            result_statement = messages.ResultStatement('result', r[0], sign.generate_hash(result.encode('ascii')), r[1])
+            signed_result_statement = sign.sign_msg(signing_key, pickle.dumps(result_statement))
+            latest_result_stmt[client_id].append((signed_result_statement, r[2]))
+        # result_statement = messages.ResultStatement('result', result, sign.generate_hash(result.encode('ascii')), operation)
+        # signed_result_statement = sign.sign_msg(signing_key, pickle.dumps(result_statement))
+        # latest_result_stmt[client_id] = signed_result_statement
+
         output('State of dictionary :', dictionary)
         hashed_running_state = sign.generate_hash(pickle.dumps(dictionary))
         output("Replica ", replica_id, " sending caughtup statement to olympus")
-        send(('CaughtupStatement', hashed_running_state, replica_id), to=olympus)
- 
+        send(('CaughtupStatement', hashed_running_state, replica_id, latest_result_stmt[client_id], client_id), to=olympus)
+
 
     def receive(msg=('GetRunningState'), from_=olympus):
         output("Replica ", replica_id, " received getrunning state request from olympus.")
@@ -752,7 +812,7 @@ class Replica(process):
     def start_new_operation(operation, client, client_id, sequence_number):
         #add operation at the next slot
         forward_shuttle = None
-        forward_shuttle = order_operation(operation, client)
+        forward_shuttle = order_operation(operation, client, client_id, sequence_number)
         if not forward_shuttle == None:
             output('Replica:', replica_id, 'orderCommand transition')
 
@@ -760,9 +820,10 @@ class Replica(process):
             result = operations.perform_operation(operation, dictionary)
             output('State of dictionary at Head:', dictionary)
             output('Result obtained at Head for operation:', operation,'is: ',result)
-            result_proof = create_result_proof(result, slot_number, operation)
+            result_proof, signed_result_statement = create_result_proof(result, slot_number, operation, sequence_number, client_id)
             forward_shuttle.add_result_proof(result_proof)
 
+            latest_result_stmt[client_id] = signed_result_statement
             output('Replica Head: Sequence number', sequence_number)
         return forward_shuttle
 
