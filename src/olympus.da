@@ -46,18 +46,14 @@ class Olympus(process):
         self.wedged_statements = []
         self.caughtup_statements = []
         self.verified_running_state = False
-        self.send_config_client = (False, None)
+        self.send_config_client = {}
 
         self.result_statements = {}
         self.wedge_statement_timeout = 30
         self.caughtup_statement_timeout = 30
-
+        self.consistent_running_state = {} # dictionary to be copied to new replicas
 
     def create_keys(reconfig):
-        public_old_keys = sign.generate_hash(pickle.dumps(public_key_map))
-        private_old_keys = sign.generate_hash(pickle.dumps(priv_key_map))
-
-        output('Olympus creating new keys', reconfig)
         priv_key, pub_key = generate_pub_priv_keys()
         public_key_map['head'] = pub_key
         priv_key_map['head'] = priv_key
@@ -70,15 +66,8 @@ class Olympus(process):
             priv_key, pub_key = generate_pub_priv_keys()
             public_key_map['replica_' + str(index)] = pub_key
             priv_key_map['replica_' + str(index)] = priv_key
- 
-        public_new_keys = sign.generate_hash(pickle.dumps(public_key_map))
-        private_new_keys = sign.generate_hash(pickle.dumps(priv_key_map))
-
-        output('private keys ', sodium_memcmp(private_old_keys, private_new_keys))
-        output('public keys ', sodium_memcmp(public_old_keys, public_new_keys))
 
         if not reconfig:
-            output('Olympus creating new keys', reconfig)
             priv_key, pub_key = generate_pub_priv_keys()
             public_key_map['olympus'] = pub_key
             priv_key_map['olympus'] = priv_key
@@ -90,7 +79,6 @@ class Olympus(process):
         
 
     def create_signing_keys(reconfig):
-        output('Olympus creating new signing keys', reconfig)
         signing_key_map['head'], verify_key_hex_map['head'] = generate_sign_key()
         signing_key_map['tail'], verify_key_hex_map['tail'] = generate_sign_key()
         for index in range(1, len(configuration['config_' + str(current_configuration)]) - 1):
@@ -99,7 +87,6 @@ class Olympus(process):
             verify_key_hex_map['replica_' + str(index)] = verify_key_hex
 
         if not reconfig:
-            output('Olympus creating new signing keys', reconfig)
             signing_key_map['olympus'], verify_key_hex_map['olympus'] = generate_sign_key()
 
             for index in range(0, num_of_clients):
@@ -281,19 +268,19 @@ class Olympus(process):
         self.create_signing_keys(False)
 
         setup_and_start_replicas(configuration['config_' + str(current_configuration)], public_key_map, priv_key_map, signing_key_map,
-        verify_key_hex_map, head_timeout, nonhead_timeout, checkpt_interval)
+        verify_key_hex_map, head_timeout, nonhead_timeout, checkpt_interval, consistent_running_state)
 
         #Olympus always stays on
         await(False)
 
    
     def receive(msg=('GetConfiguration', client_id), from_=client):
-        output('Olympus: client requested configuration. reconfiguring', reconfiguring)
+        output('Olympus: client requested configuration. System reconfiguring: ', reconfiguring)
         if not reconfiguring:
             output('Olympus: Sending configuration to client:', client_id)
             send(('Configuration', configuration['config_' + str(current_configuration)], current_configuration,), to=client)
         elif reconfiguring:
-            send_config_client = (True, client)
+            send_config_client[client_id] = (True, client)
 
 
     def receive(msg=('GetKeys', client_id), from_=client):
@@ -465,11 +452,11 @@ class Olympus(process):
                 #     caughtup_seq_no += 1
                 # else: 
                 #     verified = False
-            if await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id, latest_result_stmt, client_id, sequence_number), from_=replica))) == len(consistent_replicas)):
+            if await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id, latest_result_stmt, client_id), from_=replica))) == len(consistent_replicas)):
             # if await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id,), from_=replica))) == len(config)):
                 output("Olympus :Received all caughtup statements")
             elif timeout(caughtup_statement_timeout):
-                output("Olympus: Timeout occured for caught up statements.")
+                output("Olympus: Timeout occurred for caught up statements. Received", len(caughtup_statements), " caught statements.")
 
             verified = check_caughtup_statements(caughtup_statements) 
 # >>>>>>> ea413ec0e772fca4f8c559bc7be96602c0d2c27a
@@ -482,8 +469,8 @@ class Olympus(process):
 
             #send_result_to_client()
 
-            output("Olympus :Sending getrunning history request.")
-            sequence_no = 0;
+            output("Olympus: Sending getrunning state request.")
+            sequence_no = 0
             send(('GetRunningState', sequence_no,), to=config['head'])
             if not verified_running_state:
                 for index in range(1, len(config) - 1):
@@ -498,6 +485,8 @@ class Olympus(process):
             #init_hist_statement = create_hist_statement(hashed_running_state)
             #send init_hist_statement to new configuration
             await(verified_running_state)
+            output('Olympus decided consistent running state. State: ', consistent_running_state)
+
             #killing exisiting replicas
             output("Sending terminate message to each replica")
             send('Terminate', to=configuration['config_' + str(current_configuration)]['head'])
@@ -512,11 +501,13 @@ class Olympus(process):
                 send('Hello', to=configuration['config_' + str(current_configuration)]['replica_' + str(index)])
             send(('Hello'), to=configuration['config_' + str(current_configuration)]['tail'])
 
-            await(len(listof(replica, received(('ReplicaUp', replica_id), from_=replica))) == len(configuration['config_' + str(current_configuration)]))            
-            if send_config_client[0]:
+            await(len(listof(replica, received(('ReplicaUp', replica_id), from_=replica))) == len(configuration['config_' + str(current_configuration)]))
+            reconfiguring = False
+            output('Value of config client', send_config_client)
+            if client_id in send_config_client and send_config_client[client_id][0]:
                 output('current_configuration ', current_configuration)
-                output('Olympus: Sending configuration to client', client_id)
-                send(('Configuration', configuration['config_' + str(current_configuration)], current_configuration,), to=send_config_client[1])
+                output('Olympus: Sending new configuration to client', client_id)
+                send(('Configuration', configuration['config_' + str(current_configuration)], current_configuration,), to=send_config_client[client_id][1])
 
 
     def receive(msg=('ReplicaUp', replica_id), from_=replica):
@@ -529,17 +520,18 @@ class Olympus(process):
 
         replicas = new(replica.Replica, num=no_of_replicas, at='ReplicasNode')
         configuration['config_' + str(current_configuration)] = create_replica_config(list(replicas))
-        output('Olympus creating new configuration. New config number ', current_configuration)
+        output('Olympus: creating new configuration. New config number ', current_configuration)
         """Create public and private keys for replicas"""
+        output('Olympus: Creating new keys for replicas')
         self.create_keys(True)
         self.create_signing_keys(True)
         setup_and_start_replicas(configuration['config_' + str(current_configuration)], public_key_map, priv_key_map, signing_key_map,
-        verify_key_hex_map, head_timeout, nonhead_timeout, checkpt_interval)
+        verify_key_hex_map, head_timeout, nonhead_timeout, checkpt_interval, consistent_running_state)
 
 
     def send_wegde_requests(config):
         sequence_no = 0
-        output("Sending wedge requests each replica")
+        output("Olympus: Sending wedge requests to each replica")
         send(('WedgeRequest', sequence_no), to=config['head'])
         for index in range(1, len(config) - 1):
             sequence_no += 1
@@ -586,12 +578,13 @@ class Olympus(process):
         #     result_statements[client_id][replica_id] = latest_result_stmt, client_id
 
 
-    def receive(msg=('RunningState', running_state,replica_id,), from_=replica):
-        output("Olympus : Received running state from replica ", replica_id)
+    def receive(msg=('RunningState', running_state, replica_id,), from_=replica):
+        output("Olympus : Received running state from replica ", replica_id, replica)
         hashed_running_state = sign.generate_hash(pickle.dumps(running_state))
         #if hashed_running_state == caughtup_statements[0][1] and not verified_running_state:
         if hashed_running_state == caughtup_statements[0][1]:
             verified_running_state = True
+            consistent_running_state = running_state
             output("Hash value of running state received matched with caughtup messages hashed running state value.")
         else:
             output("Hash value of running state received not matched with caughtup messages hashed running state value")
@@ -669,20 +662,20 @@ class Olympus(process):
         return configuration['config_' + str(current_configuration)]
 
 
-    def setup_and_start_replicas(configuration, public_key_map, priv_key_map, signing_key_map, verify_key_hex_map, head_timeout, nonhead_timeout, checkpt_interval):
+    def setup_and_start_replicas(configuration, public_key_map, priv_key_map, signing_key_map, verify_key_hex_map, head_timeout, nonhead_timeout, checkpt_interval, consistent_running_state):
         #setup and start head and tail
         setup(configuration['head'], (self, configuration, public_key_map, priv_key_map['head'],
-        signing_key_map['head'], verify_key_hex_map, 'head', 'ACTIVE', head_timeout, nonhead_timeout, checkpt_interval))
+        signing_key_map['head'], verify_key_hex_map, 'head', 'ACTIVE', head_timeout, nonhead_timeout, checkpt_interval, consistent_running_state))
         setup(configuration['tail'], (self, configuration, public_key_map, priv_key_map['tail'],
-        signing_key_map['tail'], verify_key_hex_map, 'tail', 'ACTIVE', head_timeout, nonhead_timeout, checkpt_interval))
+        signing_key_map['tail'], verify_key_hex_map, 'tail', 'ACTIVE', head_timeout, nonhead_timeout, checkpt_interval, consistent_running_state))
         start(configuration['head'])
         start(configuration['tail'])
 
         #setup and start intermediate replicas
         for index in range(1, len(configuration) - 1):
             setup(configuration['replica_' + str(index)], (self, configuration, public_key_map, priv_key_map['replica_'
-            + str(index)], signing_key_map['replica_' + str(index)], verify_key_hex_map, 'replica_' + str(index), 'ACTIVE', head_timeout, nonhead_timeout, checkpt_interval))
-            start(configuration['replica_' + str(index)])    
+            + str(index)], signing_key_map['replica_' + str(index)], verify_key_hex_map, 'replica_' + str(index), 'ACTIVE', head_timeout, nonhead_timeout, checkpt_interval, consistent_running_state))
+            start(configuration['replica_' + str(index)])
 
 
 def main():
