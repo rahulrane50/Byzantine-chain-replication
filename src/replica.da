@@ -44,7 +44,7 @@ config_id='config_0'):
 def handle_failure_error(failure_error):
     failure_error_dict = {'operation':None, 'result':False, 'drop_result':False, 'crash':False, 'truncate_history':None,
     'sleep':None, 'increment_slot':False, 'drop':False, 'extra_op':False, 'invalid_order_sig':False,
-    'invalid_result_sig':False}
+    'invalid_result_sig':False, 'drop_checkpt_stmts':False}
     if 'change_operation' in failure_error:
         failure_error_dict['operation'] = "get('x')"
     elif 'change_result' in failure_error:
@@ -61,6 +61,8 @@ def handle_failure_error(failure_error):
         failure_error_dict['sleep'] = n
     elif 'increment_slot' in failure_error:
         failure_error_dict['increment_slot'] = True
+    elif 'drop_checkpt_stmts' in failure_error:
+        failure_error_dict['drop_checkpt_stmts'] = True
     elif 'drop' in failure_error:
         failure_error_dict['drop'] = True
     elif 'extra_op' in failure_error:
@@ -106,13 +108,14 @@ class Replica(process):
         self.cached_checkpoint_shuttles = {}
         self.kill = False
         output('Replica', replica_id, ' setup')
+        self.seq_no_checkpoint = 0
 
     """""""""""""""""""""
         Checkpointing
     """""""""""""""""""""
     # calculate hash of the running state (i.e. current contents of the dictionary)
     # all replicas will do the same, tail will do the same and send the checkpoint shuttle in the reverse direction
-    def initiate_checkpoint():
+    def initiate_checkpoint(seq_no):
         output('Head initiating checkpoint')        
         hashed_running_state = sign.generate_hash(pickle.dumps(state_to_save[slot_number]))
         output('head saving dict ', state_to_save, hashed_running_state)
@@ -123,7 +126,15 @@ class Replica(process):
 
         checkpoint_shuttle = messages.Shuttle(None, 'head', config['replica_1'], None)
         checkpoint_shuttle.add_checkpoint_proof(checkpoint_proof)
-
+        
+        #Check for failure trigger condition
+        failure_error = handle_failure_trigger('replica_0', None, seq_no, failure_scenario_properties, 'checkpoint')
+        output("failure_error :", failure_error)
+        if failure_error:
+            failure_error_dict = handle_failure_error(failure_error)
+            if failure_error_dict['drop'] == True:
+                output("Injecting failure drop for checkpoint shuttle. Not sendning checkpoint shuttle.")
+                return False
         send(('CheckpointShuttle', checkpoint_shuttle, replica_id, slot_number), to=config['replica_1'])
 
         # always return false to keep the await statement waiting
@@ -193,12 +204,12 @@ class Replica(process):
 
         if replica_id == 'tail':
             output('Replica Tail: completed checkpoint')
-            send(('ReverseCheckpointShuttle', checkpoint_shuttle, replica_id,), to=config['replica_' + str(len(config) - 2)])
+            send(('ReverseCheckpointShuttle', checkpoint_shuttle, replica_id,seq_no_checkpoint,), to=config['replica_' + str(len(config) - 2)])
             delete_history_prefix(checkpoint_shuttle.checkpoint_proof, replica_id)
         return verified
 
 
-    def receive(msg=('ReverseCheckpointShuttle', checkpoint_shuttle, s_replica_id,), from_=replica):
+    def receive(msg=('ReverseCheckpointShuttle', checkpoint_shuttle, s_replica_id,seq_no,), from_=replica):
         output('Replica', replica_id, 'received reverse checkpoint shuttle from', s_replica_id)
 
         checkpoint_statements = checkpoint_shuttle.checkpoint_proof.statements
@@ -208,7 +219,23 @@ class Replica(process):
         if not replica_id == 'head':
             my_index = int(replica_id.split('_')[1])
 
+        #Check for failure trigger condition
+        output("##RR: ", replica_id, seq_no, failure_scenario_properties)
+        failure_error = handle_failure_trigger(replica_id, None, seq_no, failure_scenario_properties,'completed_checkpoint')
+        output("failure_error :", failure_error)
+        if failure_error:
+            failure_error_dict = handle_failure_error(failure_error)
+            output("RR: failure_error_dict :", failure_error_dict)
+            if failure_error_dict['drop_checkpt_stmts'] == True:
+                output("Injecting failure drop chckpt stmts for completed checkpoint shuttle.")
+                output("RR: before checkpoint_statements :", len(checkpoint_statements))
+                t = int((len(config) - 1)/2)
+                output("RR: ", len(config), t)
+                checkpoint_statements = checkpoint_statements[t+1:]
+                output("RR: after checkpoint_statements :", len(checkpoint_statements))
+        
         output('inside reverse checkpoint shuttle', replica_id, 'saved state', state_to_save)
+        
         #Validate order proof with previous
         verified = verify_proof(checkpoint_shuttle.checkpoint_proof, pickle.dumps(state_to_save[checkpoint_slot]), 'checkpoint')
 
@@ -223,11 +250,11 @@ class Replica(process):
                 output('Replica', replica_id, 'deleted history prefix')
                 return
             elif (replica_id == 'replica_1'):
-                send(('ReverseCheckpointShuttle', checkpoint_shuttle, replica_id,), to=config['head'])                
+                send(('ReverseCheckpointShuttle', checkpoint_shuttle, replica_id,seq_no,), to=config['head'])                
                 delete_history_prefix(checkpoint_shuttle.checkpoint_proof, replica_id)
                 output('Replica', replica_id, 'deleted history prefix')
             else:
-                send(('ReverseCheckpointShuttle', checkpoint_shuttle, replica_id,), to=config['replica_' + str(my_index - 1)])
+                send(('ReverseCheckpointShuttle', checkpoint_shuttle, replica_id,seq_no,), to=config['replica_' + str(my_index - 1)])
                 delete_history_prefix(checkpoint_shuttle.checkpoint_proof, replica_id)
                 output('Replica', replica_id, 'deleted history prefix', replica_id)
 
@@ -267,7 +294,8 @@ class Replica(process):
             if slot_number == checkpt_interval or slot_number % checkpt_interval == 0 and not slot_number == 0:
                 output('initiating checkpoint for slot', slot_number)
                 state_to_save[slot_number] = dictionary.copy()
-                initiate_checkpoint()
+                initiate_checkpoint(seq_no_checkpoint)
+                seq_no_checkpoint += 1
         return forward_shuttle
 
 
@@ -499,13 +527,6 @@ class Replica(process):
                 output("failure_error :", failure_error)
                 if failure_error:
                     failure_error_dict = handle_failure_error(failure_error)
-
-# <<<<<<< HEAD
-#                 if failure_error and failure_error_dict['operation']:
-#                     operation = failure_error_dict['operation']
-#                     output("Injecting failure change operation on head replica")
-
-# =======
                     if failure_error_dict['operation']:
                         operation = failure_error_dict['operation']
                         output("Injecting failure change operation on head replica")
