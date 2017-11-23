@@ -118,7 +118,6 @@ class Olympus(process):
         checkpoint_slots = {}
         slots_to_consider = []
 
-        ## TO TEST
         # include checkpoint verification
         # completed checkpoint proof maybe dropped, so longest history might be for a replica which did not see the checkpoint proof
         # but if more than t+1 replicas have seen the checkpoint proof then, choose the longest history from them
@@ -129,7 +128,7 @@ class Olympus(process):
                     checkpoint_slots[proof.slot] += 1
                 except KeyError:
                     checkpoint_slots[proof.slot] = 1
-
+        
         if len(checkpoint_slots) > 1:
             for key, value in checkpoint_slots.items():
                 if value >= t + 1:
@@ -138,10 +137,10 @@ class Olympus(process):
         while(cnt < t + 1):
             for replica_id, history in histories:
                 if len(history) > len(longest_running_history) and not replica_id in incorrect_longest_hist_replica:
-                    if not len(checkpoint_proofs) > 1:
+                    if not len(checkpoint_proofs) >= t+1:
                         longest_running_history = history
                         longest_running_hist_replica = replica_id
-                    elif len(checkpoint_proofs) > 1 and checkpoint_proofs[replica_id].slot in slots_to_consider:
+                    elif len(checkpoint_proofs) >= t+1 and checkpoint_proofs[replica_id].slot in slots_to_consider:
                         longest_running_history = history
                         longest_running_hist_replica = replica_id
 
@@ -301,17 +300,17 @@ class Olympus(process):
             send(('OlympusRequest', anymsg), to=replica)
 
 
-    def create_result_proof():
-        # result_statements[client_id][0][1][0] == signed result statement
-        # result_statements[client_id][0][1][1] == sequence number
-        # result_statements[client_id][0][3] == client id
-        result_proof = messages.Proof(result_statements[client_id][0][1][0], 1, key, result_statements[client_id][0][1][1], result_statements[client_id][0][3])
+    # def create_result_proof():
+    #     # result_statements[client_id][0][1][0] == signed result statement
+    #     # result_statements[client_id][0][1][1] == sequence number
+    #     # result_statements[client_id][0][3] == client id
+    #     result_proof = messages.Proof(result_statements[client_id][0][1][0], 1, key, result_statements[client_id][0][1][1], result_statements[client_id][0][3])
 
-        statements = result_statements[client_id]
-        for index in range(1, len(statements)):
-            result_proof.add_statement(statements[index][1])
+    #     statements = result_statements[client_id]
+    #     for index in range(1, len(statements)):
+    #         result_proof.add_statement(statements[index][1])
 
-        return result_proof
+    #     return result_proof
 
 
     def send_result_to_client():
@@ -434,32 +433,17 @@ class Olympus(process):
                     catchup_statement = longest_running_history[len(verified_statement.history):]
                     #send catchup statement
                     output("Olympus : Sending catchup statement to replica ", replica_id)
-# <<<<<<< HEAD
-                #     send(('CatchupStatement', catchup_statement, client_id), to=config[replica_id])
-                # else:
-                #     verified = False
                     send(('CatchupStatement', catchup_statement, client_id, caughtup_seq_no), to=config[replica_id])
                     caughtup_seq_no += 1
                 else: 
                     verified = False
 
-            # await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id,), from_=replica))) == len(config))
-            # await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id, latest_result_stmt, client_id, sequence_number), from_=replica))) == len(consistent_replicas))
-            # output("Olympus: Received all caughtup statements")
-            # verified = check_caughtup_statements(caughtup_statements)
-# =======
-                #     send(('CatchupStatement', catchup_statement, caughtup_seq_no,), to=config[replica_id])
-                #     caughtup_seq_no += 1
-                # else: 
-                #     verified = False
-            if await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id, latest_result_stmt, client_id), from_=replica))) == len(consistent_replicas)):
-            # if await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id,), from_=replica))) == len(config)):
+            if await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id), from_=replica))) == len(consistent_replicas)):
                 output("Olympus :Received all caughtup statements")
             elif timeout(caughtup_statement_timeout):
                 output("Olympus: Timeout occurred for caught up statements. Received", len(caughtup_statements), " caught statements.")
 
-            verified = check_caughtup_statements(caughtup_statements) 
-# >>>>>>> ea413ec0e772fca4f8c559bc7be96602c0d2c27a
+            verified = check_caughtup_statements(caughtup_statements)
             if verified:
                 output("All replicas caught up messages matched successfully.")
             else:
@@ -544,19 +528,18 @@ class Olympus(process):
         wedged_statements.append((replica_id, wedged_statement))
 
 
-    def receive(msg=('CaughtupStatement', hashed_running_state, replica_id, latest_result_stmt, client_id), from_=replica):
+    def receive(msg=('CaughtupStatement', hashed_running_state, replica_id), from_=replica):
         caughtup_statements.append((replica_id, hashed_running_state))
-
-        #client_dict = {}
-        #try:
+        # client_dict = {}
+        # try:
         #    client_dict = result_statements[client_id]
-        #except KeyError:
+        # except KeyError:
         #    result_statements[client_id] = client_dict
 
-        # key   = (operation, seq)
-        # value = result statement
-        #output('before for loop')
-        #for key, value in latest_result_stmt:
+        # # key   = (operation, seq)
+        # # value = result statement
+        # output('before for loop')
+        # for key, value in latest_result_stmt:
         #    try:
         #        output('in try')
         #        result_statements[client_id][key].append((replica_id, value))
@@ -576,6 +559,7 @@ class Olympus(process):
         # except KeyError:
         #     result_statements[client_id] = {}
         #     result_statements[client_id][replica_id] = latest_result_stmt, client_id
+        # output('latest result stmt', result_statements)
 
 
     def receive(msg=('RunningState', running_state, replica_id,), from_=replica):

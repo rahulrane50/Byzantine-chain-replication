@@ -167,7 +167,7 @@ class Replica(process):
             output('Replica', replica_id, 'received checkpoint shuttle, slot_number is', slot_number,'. Caching the shuttle')
             cached_checkpoint_shuttles[head_slot] = checkpoint_shuttle
         else:
-            output('Replica', replica_id, 'Processing checkpoint shuttle, state of dictionary', dictionary, 'saving', state_to_save, 'time:: ', datetime.datetime.now())
+            output('Replica', replica_id, 'Processing checkpoint shuttle, state of dictionary', dictionary, 'saving', state_to_save)
             result = process_checkpoint_shuttle(checkpoint_shuttle, s_replica_id)
             output('Received result', result, 'after processing checkpoint shuttle', replica_id)
 
@@ -195,7 +195,7 @@ class Replica(process):
             checkpoint_statement = messages.CheckpointStatement('checkpoint', hashed_running_state)
             signed_stmt = sign.sign_msg(signing_key, pickle.dumps(checkpoint_statement))
             checkpoint_shuttle.checkpoint_proof.add_statement(signed_stmt)
-            output('forwarding checkpoint shuttle')
+            output('Replica', replica_id, 'forwarding checkpoint shuttle')
             if  not replica_id == 'tail' and my_index == len(config) - 2:
                 send(('CheckpointShuttle', checkpoint_shuttle, replica_id, slot_number), to=config['tail'])
             elif not replica_id == 'tail':
@@ -235,6 +235,7 @@ class Replica(process):
                 output("RR: ", len(config), t)
                 checkpoint_statements = checkpoint_statements[t+1:]
                 output("RR: after checkpoint_statements :", len(checkpoint_statements))
+                checkpoint_shuttle.checkpoint_proof.statements = checkpoint_statements
         
         output('inside reverse checkpoint shuttle', replica_id, 'saved state', state_to_save)
         
@@ -294,7 +295,7 @@ class Replica(process):
             output('Replica Head: Added operation', operation, 'at slot', slot_number)
 
             if slot_number == checkpt_interval or slot_number % checkpt_interval == 0 and not slot_number == 0:
-                output('initiating checkpoint for slot', slot_number)
+                output('Replica Head initiating checkpoint for slot', slot_number)
                 state_to_save[slot_number] = dictionary.copy()
                 initiate_checkpoint(seq_no_checkpoint)
                 seq_no_checkpoint += 1
@@ -385,7 +386,7 @@ class Replica(process):
 
             if slot_number == checkpt_interval or slot_number % checkpt_interval == 0 and not slot_number == 0:
                 state_to_save[slot_number] = dictionary.copy()
-                output('Replica', replica_index, 'Dictionary being saved', state_to_save, dictionary, 'time:: ', datetime.datetime.now())
+                output('Replica', replica_index, 'Dictionary being saved', state_to_save, dictionary)
 
         else:
             #send reconfig request
@@ -602,9 +603,6 @@ class Replica(process):
     def receive(msg=('ForwardShuttle', forward_shuttle, client_request, client, client_id, sequence_number), from_=replica):
         output('Replica Intermediate:', replica_id, 'shuttle received from previous replica :', forward_shuttle)
         my_index = int(replica_id.split('_')[1])
-
-        output('Replica', replica_id,'Inside ForwardShuttle client_id is ', client_id)
-
         if mode == 'IMMUTABLE':
             output('Replica :', replica_id, 'Immutable, not performing forward shuttle operation.')
             return
@@ -629,7 +627,6 @@ class Replica(process):
                 output("Injecting invalid order signature at replica ", replica_id)
                 invalidate_order_statement = True
 
-        output('Replica', replica_id, ' verifying sign after starting anew')
         unsigned_obj = sign.verify_sign(verify_key_hex_map['client_' + str(client_id)], client_request)
         operation, sequence_number, s_client_id = pickle.loads(unsigned_obj)
 
@@ -644,9 +641,9 @@ class Replica(process):
             output('State of dictionary at', 'replica_' + str(my_index),':', dictionary, 'after operation', operation)
             signed_result_statement = add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')))
 
-            if not client_id in latest_result_stmt:
-                latest_result_stmt[client_id] = {}
-            latest_result_stmt[client_id][(operation, sequence_number)] = signed_result_statement
+            # if not client_id in latest_result_stmt:
+            #     latest_result_stmt[client_id] = {}
+            # latest_result_stmt[client_id][(operation, sequence_number)] = signed_result_statement
 
             #send both shuttles to next replica
             if  my_index == len(config) - 2:
@@ -704,9 +701,9 @@ class Replica(process):
 
             signed_result_statement = add_result_statement(forward_shuttle, operation, result, sign.generate_hash(result.encode('ascii')), invalidate_result)
 
-            if not client_id in latest_result_stmt:
-                latest_result_stmt[client_id] = {}
-            latest_result_stmt[client_id][(operation, sequence_number)] = signed_result_statement
+            # if not client_id in latest_result_stmt:
+            #     latest_result_stmt[client_id] = {}
+            # latest_result_stmt[client_id][(operation, sequence_number)] = signed_result_statement
 
             #the order proof is complete, send result to client
             send(('Result', forward_shuttle.result_proof, result, str(client_id) + '_' + str(sequence_number), operation), to=client)
@@ -907,9 +904,9 @@ class Replica(process):
             result    = r[0]
             result_statement = messages.ResultStatement('result', result, sign.generate_hash(result.encode('ascii')), operation)
             signed_result_statement = sign.sign_msg(signing_key, pickle.dumps(result_statement))            
-            if not client_id in latest_result_stmt:
-                latest_result_stmt[client_id] = {}
-            latest_result_stmt[client_id][(operation, seq_num)] = signed_result_statement
+            # if not client_id in latest_result_stmt:
+            #     latest_result_stmt[client_id] = {}
+            # latest_result_stmt[client_id][(operation, seq_num)] = signed_result_statement
 
         # result_statement = messages.ResultStatement('result', result, sign.generate_hash(result.encode('ascii')), operation)
         # signed_result_statement = sign.sign_msg(signing_key, pickle.dumps(result_statement))
@@ -918,7 +915,7 @@ class Replica(process):
         output('State of dictionary :', dictionary)
         hashed_running_state = sign.generate_hash(pickle.dumps(dictionary))
         output("Replica ", replica_id, " sending caughtup statement to olympus")
-        send(('CaughtupStatement', hashed_running_state, replica_id, latest_result_stmt[client_id], client_id), to=olympus)
+        send(('CaughtupStatement', hashed_running_state, replica_id), to=olympus)
 
 
     def receive(msg=('GetRunningState', sequence_no), from_=olympus):
