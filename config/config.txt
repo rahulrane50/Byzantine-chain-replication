@@ -3,6 +3,11 @@
 # final values of object state. [2017-09-12: added this item]
 test_case_name = test1
 
+#PERFORMANCE EVALUATION
+#raft - 12.13 secs
+#performance900 single host : 1 min 48.15 secs
+#performance900 multiple nodes : 2 mins 36 secs
+
 # number of failures to tolerate.  number of replicas is 2t+1.
 t = 2
 # number of clients
@@ -47,13 +52,15 @@ workload[0] = pseudorandom(233,5)
 #failures[0,1] = result_shuttle(0,0),drop_result_stmt();wedge_request(1), crash()
 #failures[0,1] = catch_up(1), crash() 
 #failures[0,1] = result_shuttle(0,0),drop_result_stmt();wedge_request(1), truncate_history(2)
-#failures[0,1] = shuttle(0,1), sleep(20)
+failures[0,1] = shuttle(0,1), sleep(20)
+#failures[0,1] = result_shuttle(0,0), sleep(20)
+failures[0,0] = result_shuttle(0,0), sleep(20)
 #failures[0,0] = client_request(0,1), increment_slot()
 #failures[0,1] = get_running_state(1), extra_op()
 #failures[0,1] = shuttle(0,1), invalid_order_sig()
 #failures[0,5] = shuttle(0,1), invalid_result_sig()
 
-checkpt_interval = 2
+#checkpt_interval = 2
 #failures[0,0] = checkpoint(1), drop()
-failures[0,2] = completed_checkpoint(0), drop_checkpt_stmts()
+#failures[0,2] = completed_checkpoint(0), drop_checkpt_stmts()
 
