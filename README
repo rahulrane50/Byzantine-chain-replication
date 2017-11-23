@@ -29,6 +29,8 @@ CONTRIBUTIONS:
             Added handling for failure injection.
             Added verification for result statements.
             Testing framework for getting input testdata implemented using simple python json module.
+            Added workflow for wedge requests, catchup and caught messages.
+            Added fault errors for phase 3.
     
     rpohankar: Implemented workload generation, generation of request sequence in config file
                Implemented dictionary object: support put, get, slice, append
