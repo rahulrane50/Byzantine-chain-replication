@@ -48,9 +48,9 @@ MAIN FILES:
     replica : replica.da
 
 CODE SIZE:
-    LOC: algorithm - approximately 650 
-         other - approximately 300
-         total - approximately 950
+    LOC: algorithm - approximately 1400 
+         other - approximately 500
+         total - approximately 1900
 
 LANGUAGE FEATURE USAGE:
     Used the quantifier some in 12 await statements for handling messages.
