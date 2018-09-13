@@ -1,0 +1,134 @@
+[2017-10-31 23:19:57,993] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica: head started in ACTIVE mode
+[2017-10-31 23:19:58,029] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Replica: tail started in ACTIVE mode
+[2017-10-31 23:19:58,042] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica: replica_1 started in ACTIVE mode
+[2017-10-31 23:19:58,088] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica: replica_2 started in ACTIVE mode
+[2017-10-31 23:19:58,134] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica: replica_3 started in ACTIVE mode
+[2017-10-31 23:19:58,232] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica Head: operation received from client : put('movie','star')
+[2017-10-31 23:19:58,232] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: failure_error : None
+[2017-10-31 23:19:58,233] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica head : Verified history
+[2017-10-31 23:19:58,233] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica head : successfully verified previous order statements
+[2017-10-31 23:19:58,234] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica Head: Added operation put('movie','star') at slot 1
+[2017-10-31 23:19:58,234] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica: head orderCommand transition
+[2017-10-31 23:19:58,235] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: State of dictionary at Head: {'movie': 'star'}
+[2017-10-31 23:19:58,235] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Result obtained at Head for operation: put('movie','star') is:  OK
+[2017-10-31 23:19:58,235] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica Head: Sequence number 0
+[2017-10-31 23:19:58,237] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica Head: operation received from client : get('movie')
+[2017-10-31 23:19:58,237] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: failure_error : None
+[2017-10-31 23:19:58,237] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica Intermediate: replica_1 shuttle received from previous replica : <messages.Shuttle object at 0x7f993818ce48>
+[2017-10-31 23:19:58,237] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: failure_error : None
+[2017-10-31 23:19:58,237] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica 1 : Verified history
+[2017-10-31 23:19:58,237] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica head : Verified history
+[2017-10-31 23:19:58,237] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica head : successfully verified previous order statements
+[2017-10-31 23:19:58,238] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica Head: Added operation get('movie') at slot 2
+[2017-10-31 23:19:58,238] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: unsigned order stmt [<messages.OrderStatement object at 0x7f993818cdd8>]
+[2017-10-31 23:19:58,238] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica: head orderCommand transition
+[2017-10-31 23:19:58,238] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: statement in check previous stmts 1 put('movie','star') incoming values  1 put('movie','star')
+[2017-10-31 23:19:58,238] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: State of dictionary at Head: {'movie': 'star'}
+[2017-10-31 23:19:58,238] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica replica_1 : successfully verified previous order statements
+[2017-10-31 23:19:58,238] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Result obtained at Head for operation: get('movie') is:  star
+[2017-10-31 23:19:58,238] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica: replica_1 orderCommand transition
+[2017-10-31 23:19:58,238] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica Head: Sequence number 1
+[2017-10-31 23:19:58,238] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: State of dictionary at replica_1 : {'movie': 'star'}
+[2017-10-31 23:19:58,240] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica Intermediate: replica_1 shuttle received from previous replica : <messages.Shuttle object at 0x7f993818cd30>
+[2017-10-31 23:19:58,240] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: failure_error : None
+[2017-10-31 23:19:58,240] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica Intermediate: replica_2 shuttle received from previous replica : <messages.Shuttle object at 0x7f993aab7da0>
+[2017-10-31 23:19:58,240] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: failure_error : None
+[2017-10-31 23:19:58,241] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica 2 : Verified history
+[2017-10-31 23:19:58,241] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica 1 : Verified history
+[2017-10-31 23:19:58,241] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: unsigned order stmt [<messages.OrderStatement object at 0x7f993818cda0>]
+[2017-10-31 23:19:58,241] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: statement in check previous stmts 2 get('movie') incoming values  2 get('movie')
+[2017-10-31 23:19:58,241] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: unsigned order stmt [<messages.OrderStatement object at 0x7f993aab7d30>]
+[2017-10-31 23:19:58,241] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica replica_1 : successfully verified previous order statements
+[2017-10-31 23:19:58,241] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: statement in check previous stmts 1 put('movie','star') incoming values  1 put('movie','star')
+[2017-10-31 23:19:58,241] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica replica_2 : successfully verified previous order statements
+[2017-10-31 23:19:58,241] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica: replica_1 orderCommand transition
+[2017-10-31 23:19:58,242] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: State of dictionary at replica_1 : {'movie': 'star'}
+[2017-10-31 23:19:58,242] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica: replica_2 orderCommand transition
+[2017-10-31 23:19:58,242] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: State of dictionary at replica_2 : {'movie': 'star'}
+[2017-10-31 23:19:58,244] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica Intermediate: replica_2 shuttle received from previous replica : <messages.Shuttle object at 0x7f993aab7ef0>
+[2017-10-31 23:19:58,245] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica Intermediate: replica_3 shuttle received from previous replica : <messages.Shuttle object at 0x7f993818c8d0>
+[2017-10-31 23:19:58,245] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: failure_error : None
+[2017-10-31 23:19:58,245] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: failure_error : None
+[2017-10-31 23:19:58,245] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica 3 : Verified history
+[2017-10-31 23:19:58,245] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica 2 : Verified history
+[2017-10-31 23:19:58,245] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: unsigned order stmt [<messages.OrderStatement object at 0x7f993818c828>]
+[2017-10-31 23:19:58,246] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: statement in check previous stmts 1 put('movie','star') incoming values  1 put('movie','star')
+[2017-10-31 23:19:58,246] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica replica_3 : successfully verified previous order statements
+[2017-10-31 23:19:58,246] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: unsigned order stmt [<messages.OrderStatement object at 0x7f993aab7cf8>]
+[2017-10-31 23:19:58,246] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: statement in check previous stmts 2 get('movie') incoming values  2 get('movie')
+[2017-10-31 23:19:58,246] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica replica_2 : successfully verified previous order statements
+[2017-10-31 23:19:58,246] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica: replica_3 orderCommand transition
+[2017-10-31 23:19:58,246] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: State of dictionary at replica_3 : {'movie': 'star'}
+[2017-10-31 23:19:58,246] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica: replica_2 orderCommand transition
+[2017-10-31 23:19:58,246] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: State of dictionary at replica_2 : {'movie': 'star'}
+[2017-10-31 23:19:58,248] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica Intermediate: replica_3 shuttle received from previous replica : <messages.Shuttle object at 0x7f993818ca20>
+[2017-10-31 23:19:58,248] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: failure_error : None
+[2017-10-31 23:19:58,248] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Replica Tail: shuttle received in tail replica : <messages.Shuttle object at 0x7f993818cd30>
+[2017-10-31 23:19:58,248] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: failure_error : None
+[2017-10-31 23:19:58,248] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica 3 : Verified history
+[2017-10-31 23:19:58,248] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Replica 3 : Verified history
+[2017-10-31 23:19:58,249] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: unsigned order stmt [<messages.OrderStatement object at 0x7f993818c7f0>]
+[2017-10-31 23:19:58,249] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: statement in check previous stmts 2 get('movie') incoming values  2 get('movie')
+[2017-10-31 23:19:58,249] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica replica_3 : successfully verified previous order statements
+[2017-10-31 23:19:58,249] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: unsigned order stmt [<messages.OrderStatement object at 0x7f993818cbe0>]
+[2017-10-31 23:19:58,249] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica: replica_3 orderCommand transition
+[2017-10-31 23:19:58,249] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: State of dictionary at replica_3 : {'movie': 'star'}
+[2017-10-31 23:19:58,249] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: statement in check previous stmts 1 put('movie','star') incoming values  1 put('movie','star')
+[2017-10-31 23:19:58,249] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Replica tail : successfully verified previous order statements
+[2017-10-31 23:19:58,250] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Replica: tail orderCommand transition
+[2017-10-31 23:19:58,250] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Replica: tail added order statement to shuttle.( 1 ,  put('movie','star') ) is persistent
+[2017-10-31 23:19:58,250] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: State of dictionary at Tail: {'movie': 'star'}
+[2017-10-31 23:19:58,251] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Tail Replica: sent reply to client <Client:f9402#ClientsNode>
+[2017-10-31 23:19:58,252] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Replica tail : cached result: {'0_0': (<messages.Shuttle object at 0x7f993818cd30>, 'OK')}
+[2017-10-31 23:19:58,252] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Replica tail : Sent result shuttle to replica_3
+[2017-10-31 23:19:58,253] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica : replica_3 result shuttle received from previous replica : <messages.Shuttle object at 0x7f993818c828>
+[2017-10-31 23:19:58,254] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica replica_3 Verifying result proof
+[2017-10-31 23:19:58,254] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Replica Tail: shuttle received in tail replica : <messages.Shuttle object at 0x7f993818c940>
+[2017-10-31 23:19:58,254] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: failure_error : None
+[2017-10-31 23:19:58,254] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Replica 3 : Verified history
+[2017-10-31 23:19:58,255] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: unsigned order stmt [<messages.OrderStatement object at 0x7f993818c668>]
+[2017-10-31 23:19:58,255] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: statement in check previous stmts 2 get('movie') incoming values  2 get('movie')
+[2017-10-31 23:19:58,255] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica replica_3 Result proof validated successfully
+[2017-10-31 23:19:58,255] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Replica tail : successfully verified previous order statements
+[2017-10-31 23:19:58,255] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica replica_3 : cached result {'0_0': (<messages.Shuttle object at 0x7f993818c828>, 'OK')}
+[2017-10-31 23:19:58,255] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Replica: tail orderCommand transition
+[2017-10-31 23:19:58,255] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Replica: tail added order statement to shuttle.( 2 ,  get('movie') ) is persistent
+[2017-10-31 23:19:58,255] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: State of dictionary at Tail: {'movie': 'star'}
+[2017-10-31 23:19:58,256] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica replica_3 : Sent result shuttle to replica_3
+[2017-10-31 23:19:58,256] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Tail Replica: sent reply to client <Client:f9402#ClientsNode>
+[2017-10-31 23:19:58,257] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica : replica_2 result shuttle received from previous replica : <messages.Shuttle object at 0x7f993aab7da0>
+[2017-10-31 23:19:58,257] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica replica_2 Verifying result proof
+[2017-10-31 23:19:58,258] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica replica_2 Result proof validated successfully
+[2017-10-31 23:19:58,258] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica replica_2 : cached result {'0_0': (<messages.Shuttle object at 0x7f993aab7da0>, 'OK')}
+[2017-10-31 23:19:58,259] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica replica_2 : Sent result shuttle to replica_3
+[2017-10-31 23:19:58,260] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica : replica_1 result shuttle received from previous replica : <messages.Shuttle object at 0x7f993818cc88>
+[2017-10-31 23:19:58,260] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica replica_1 Verifying result proof
+[2017-10-31 23:19:58,262] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica replica_1 Result proof validated successfully
+[2017-10-31 23:19:58,262] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica replica_1 : cached result {'0_0': (<messages.Shuttle object at 0x7f993818cc88>, 'OK')}
+[2017-10-31 23:19:58,263] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica replica_1 : Sent result shuttle to head
+[2017-10-31 23:19:58,264] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica : head result shuttle received from previous replica : <messages.Shuttle object at 0x7f993818ccf8>
+[2017-10-31 23:19:58,264] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica head Verifying result proof
+[2017-10-31 23:19:58,265] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica head Result proof validated successfully
+[2017-10-31 23:19:58,266] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica head : cached result {'0_0': (<messages.Shuttle object at 0x7f993818ccf8>, 'OK')}
+[2017-10-31 23:19:58,412] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Replica tail : cached result: {'0_1': (<messages.Shuttle object at 0x7f993818c940>, 'star'), '0_0': (<messages.Shuttle object at 0x7f993818cd30>, 'OK')}
+[2017-10-31 23:19:58,414] replica.Replica<Replica:a6405#ReplicasNode>:OUTPUT: Replica tail : Sent result shuttle to replica_3
+[2017-10-31 23:19:58,415] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica : replica_3 result shuttle received from previous replica : <messages.Shuttle object at 0x7f993818cc18>
+[2017-10-31 23:19:58,416] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica replica_3 Verifying result proof
+[2017-10-31 23:19:58,419] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica replica_3 Result proof validated successfully
+[2017-10-31 23:19:58,419] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica replica_3 : cached result {'0_1': (<messages.Shuttle object at 0x7f993818cc18>, 'star'), '0_0': (<messages.Shuttle object at 0x7f993818c828>, 'OK')}
+[2017-10-31 23:19:58,420] replica.Replica<Replica:a6403#ReplicasNode>:OUTPUT: Replica replica_3 : Sent result shuttle to replica_3
+[2017-10-31 23:19:58,421] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica : replica_2 result shuttle received from previous replica : <messages.Shuttle object at 0x7f993aaca128>
+[2017-10-31 23:19:58,421] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica replica_2 Verifying result proof
+[2017-10-31 23:19:58,422] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica replica_2 Result proof validated successfully
+[2017-10-31 23:19:58,422] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica replica_2 : cached result {'0_1': (<messages.Shuttle object at 0x7f993aaca128>, 'star'), '0_0': (<messages.Shuttle object at 0x7f993aab7da0>, 'OK')}
+[2017-10-31 23:19:58,423] replica.Replica<Replica:a6402#ReplicasNode>:OUTPUT: Replica replica_2 : Sent result shuttle to replica_3
+[2017-10-31 23:19:58,424] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica : replica_1 result shuttle received from previous replica : <messages.Shuttle object at 0x7f99381a01d0>
+[2017-10-31 23:19:58,424] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica replica_1 Verifying result proof
+[2017-10-31 23:19:58,426] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica replica_1 Result proof validated successfully
+[2017-10-31 23:19:58,426] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica replica_1 : cached result {'0_1': (<messages.Shuttle object at 0x7f99381a01d0>, 'star'), '0_0': (<messages.Shuttle object at 0x7f993818cc88>, 'OK')}
+[2017-10-31 23:19:58,426] replica.Replica<Replica:a6406#ReplicasNode>:OUTPUT: Replica replica_1 : Sent result shuttle to head
+[2017-10-31 23:19:58,428] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica : head result shuttle received from previous replica : <messages.Shuttle object at 0x7f993818cda0>
+[2017-10-31 23:19:58,428] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica head Verifying result proof
+[2017-10-31 23:19:58,430] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica head Result proof validated successfully
+[2017-10-31 23:19:58,430] replica.Replica<Replica:a6404#ReplicasNode>:OUTPUT: Replica head : cached result {'0_1': (<messages.Shuttle object at 0x7f993818cda0>, 'star'), '0_0': (<messages.Shuttle object at 0x7f993818ccf8>, 'OK')}
+[2017-10-31 23:24:27,056] da.api<MainProcess>:WARNING: Received keyboard interrupt. 

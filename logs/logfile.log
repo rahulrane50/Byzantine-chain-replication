@@ -1,0 +1,236 @@
+[2017-11-17 14:52:45,893] main_process.Node_<Node_:b3801>:OUTPUT: Created replica processes. They will be started from within the olympus process
+[2017-11-17 14:52:45,949] main_process.Node_<Node_:b3801>:OUTPUT: Created and started olympus process
+[2017-11-17 14:52:45,963] client.Client<Client:dfc08>:OUTPUT: Client 0 : setup
+[2017-11-17 14:52:45,992] replica.Replica<Replica:dfc02>:OUTPUT: Replica: head started in ACTIVE mode
+[2017-11-17 14:52:45,998] replica.Replica<Replica:dfc05>:OUTPUT: Replica: tail started in ACTIVE mode
+[2017-11-17 14:52:46,010] main_process.Node_<Node_:b3801>:OUTPUT: Created and started client processes
+[2017-11-17 14:52:46,012] client.Client<Client:dfc08>:OUTPUT: Client 0 : running
+[2017-11-17 14:52:46,013] client.Client<Client:dfc08>:OUTPUT: Client 0 :requesting configuration from Olympus
+[2017-11-17 14:52:46,044] replica.Replica<Replica:dfc03>:OUTPUT: Replica: replica_1 started in ACTIVE mode
+[2017-11-17 14:52:46,090] replica.Replica<Replica:dfc04>:OUTPUT: Replica: replica_2 started in ACTIVE mode
+[2017-11-17 14:52:46,134] replica.Replica<Replica:dfc06>:OUTPUT: Replica: replica_3 started in ACTIVE mode
+[2017-11-17 14:52:46,135] olympus.Olympus<Olympus:dfc07>:OUTPUT: Olympus: Sending configuration to client: 0
+[2017-11-17 14:52:46,138] client.Client<Client:dfc08>:OUTPUT: Client 0 :received  configuration from Olympus {'config_0': {'replica_3': <Replica:dfc06>, 'replica_2': <Replica:dfc04>, 'tail': <Replica:dfc05>, 'head': <Replica:dfc02>, 'replica_1': <Replica:dfc03>}}
+[2017-11-17 14:52:46,141] olympus.Olympus<Olympus:dfc07>:OUTPUT: Sending keys to client: 0
+[2017-11-17 14:52:46,178] client.Client<Client:dfc08>:OUTPUT: Client 0 :received keys from Olympus
+[2017-11-17 14:52:46,180] olympus.Olympus<Olympus:dfc07>:OUTPUT: Sending signing keys to client: 0
+[2017-11-17 14:52:46,181] client.Client<Client:dfc08>:OUTPUT: Client 0 :received signing keys from Olympus
+[2017-11-17 14:52:46,182] client.Client<Client:dfc08>:OUTPUT: Testcase : testcase_5
+[2017-11-17 14:52:46,182] client.Client<Client:dfc08>:OUTPUT: Description : For single client and multiple operations check for result.
+[2017-11-17 14:52:46,182] client.Client<Client:dfc08>:OUTPUT: Expected results : Client must receive result before timeout and expected dict at the end of workload must match with actual results.
+[2017-11-17 14:52:46,182] client.Client<Client:dfc08>:OUTPUT: Expected dict : {'movie': 'luke'}
+[2017-11-17 14:52:46,184] client.Client<Client:dfc08>:OUTPUT: client workload : ["put('jedi','luke skywalker')", "slice('jedi','0:4')", "get('jedi')"]
+[2017-11-17 14:52:46,188] replica.Replica<Replica:dfc02>:OUTPUT: Replica Head: operation received from client : put('jedi','luke skywalker')
+[2017-11-17 14:52:46,189] replica.Replica<Replica:dfc02>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_1946' with '{'retransmit_req': False, 'operation_hex': b'70011c7e3299688c05dad0f93207a2fc7893e7094fc9b8666855db29a27f8688', 'client_id': 0, 'sequence_number': 0, 'encrypted_operation': b'\xd2\x16?\x01\x93\x04\xe9\xf1u\x9c\xffz`\xce\x1f\x86\xe4\xa2\xd9\xfdt\x0e\x04T\xafL\xe7v\x0b\xb3\x8dwQ\xb3\xf3\xde\xfb\x1d\x12h\xdb7\x84\xaem\x03\x98\x7f\x19\xeb\xcbr\xc1\x8dD\x95q\x0em(\t\xab\xe8\xf5\x90\xda\xb7Hz\xc5\x07\xb0-\x96\xd9\x85\xc1\x94\xb7/r\x19\xf0-\x82a\x03\x87\xc8\x859\x87\x0e\t\x12\xc7\xa1O\x00\xb7~p\xe1\xd6\x8cc|\x92\xef\x7fSJ\x04\x96\x87\xa4\xa5\x80\x0fn\x07\x0e\x11V9\x17\x89\xf8\xc5\xd9\xbd!', 'client': <Client:dfc08>}': name 'self' is not defined
+[2017-11-17 14:52:46,192] replica.Replica<Replica:dfc02>:OUTPUT: Replica Head: operation received from client : slice('jedi','0:4')
+[2017-11-17 14:52:46,192] replica.Replica<Replica:dfc02>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_1946' with '{'retransmit_req': False, 'operation_hex': b'ae860d1833728f2ba48ede12a1080a2d3e69dd5127d34fb7d8650336b5b07a81', 'client_id': 0, 'sequence_number': 1, 'encrypted_operation': b'\x8a\xc2\x8a\x89\x90\x920\xde\xad\xff\xef\x95]/\xbd\x8b\x7fu\xdd\x1a \ro\xdb/\x0eq\x93\\\x9f\x92\xb9B\xae~\x86/\x95\xb4\xc1FZwZ\x82\x87\x0b\xb2\x1b\xf9+nJ\xca\xa3\xd2\x9f\xd3v\x07\xf1\xad\xed\x86\x87TE\xac\xabl*$\x9b\x11\x96z\x9b\x8f"\xb5\xec\xff\x8c\xe9\xdf\x16\xc1\xe74\xcb4\xf7\x95F\xd7\x1a\x10\'\x84\x93\xbf\xc0\xe0\xfc/\xe1\x1d\x19\xa0\xf5\xc76|\r=\x8bK\\T\xae\x00\xd7j', 'client': <Client:dfc08>}': name 'self' is not defined
+[2017-11-17 14:52:46,195] replica.Replica<Replica:dfc02>:OUTPUT: Replica Head: operation received from client : get('jedi')
+[2017-11-17 14:52:46,195] replica.Replica<Replica:dfc02>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_1946' with '{'retransmit_req': False, 'operation_hex': b'880634b00842b27c55c8d14066e9b44e50a1f52aefa0cfcd51e27d35028c4da1', 'client_id': 0, 'sequence_number': 2, 'encrypted_operation': b"\xed\xd2D\xe7\xec\x98q\xa9\xe5}(\x0b\x91\xec'\x9d\xe5\xa3\x92\xbd\xc7\xe2H\xd2\x10\xf0\xe9\xb2\x15WC\xbe\xcb\xb7\r\xcf\xeb\x18C\xc8t\x7f \x15\xa1wu\t\xef\xda\x85\x89o{\xe6Xz`!\xad \t\xc6Fa\xb6\x90\xa2\x8f\x93\xf2G\xbf\x00\xc2R\xd4\xf8\xa8\x14\x05X'\x0bM\xc2\x10-W\\y3\xeat}\xa7\x13\xb6p\xd3}L\xec\xf80#a\x0e\x1c#g\x82Y\x99\x8a", 'client': <Client:dfc08>}': name 'self' is not defined
+[2017-11-17 14:52:47,197] client.Client<Client:dfc08>:OUTPUT: Operation having seqno  1 get('jedi')  timed out hence retransmitting
+[2017-11-17 14:52:47,206] replica.Replica<Replica:dfc02>:OUTPUT: Replica head : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-17 14:52:47,206] replica.Replica<Replica:dfc02>:OUTPUT: Replica head : and cache is {}
+[2017-11-17 14:52:47,223] replica.Replica<Replica:dfc03>:OUTPUT: Replica replica_1 : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-17 14:52:47,221] replica.Replica<Replica:dfc04>:OUTPUT: Replica replica_2 : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-17 14:52:47,232] replica.Replica<Replica:dfc04>:OUTPUT: Replica replica_2 : and cache is {}
+[2017-11-17 14:52:47,232] replica.Replica<Replica:dfc04>:OUTPUT: Replica replica_2 did not find result cached. Forwarding request to head..
+[2017-11-17 14:52:47,234] replica.Replica<Replica:dfc03>:OUTPUT: Replica replica_1 : and cache is {}
+[2017-11-17 14:52:47,235] replica.Replica<Replica:dfc03>:OUTPUT: Replica replica_1 did not find result cached. Forwarding request to head..
+[2017-11-17 14:52:47,243] replica.Replica<Replica:dfc06>:OUTPUT: Replica replica_3 : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-17 14:52:47,239] replica.Replica<Replica:dfc02>:OUTPUT: Replica head received forwarded retransmitted request from Replica replica_1
+[2017-11-17 14:52:47,250] replica.Replica<Replica:dfc02>:OUTPUT: starting new operation get('jedi') on request from replica replica_1
+[2017-11-17 14:52:47,251] replica.Replica<Replica:dfc02>:OUTPUT: Replica head : Verified history
+[2017-11-17 14:52:47,253] replica.Replica<Replica:dfc06>:OUTPUT: Replica replica_3 : and cache is {}
+[2017-11-17 14:52:47,252] replica.Replica<Replica:dfc02>:OUTPUT: Replica head : successfully verified previous order statements
+[2017-11-17 14:52:47,253] replica.Replica<Replica:dfc06>:OUTPUT: Replica replica_3 did not find result cached. Forwarding request to head..
+[2017-11-17 14:52:47,255] replica.Replica<Replica:dfc02>:OUTPUT: Replica Head: Added operation get('jedi') at slot 1
+[2017-11-17 14:52:47,264] replica.Replica<Replica:dfc02>:OUTPUT: Replica: head orderCommand transition
+[2017-11-17 14:52:47,269] replica.Replica<Replica:dfc02>:OUTPUT: State of dictionary at Head: {}
+[2017-11-17 14:52:47,269] replica.Replica<Replica:dfc02>:OUTPUT: Result obtained at Head for operation: get('jedi') is:  
+[2017-11-17 14:52:47,268] replica.Replica<Replica:dfc05>:OUTPUT: Replica tail : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-17 14:52:47,274] replica.Replica<Replica:dfc02>:OUTPUT: Replica Head: Sequence number 1
+[2017-11-17 14:52:47,275] replica.Replica<Replica:dfc05>:OUTPUT: Replica tail : and cache is {}
+[2017-11-17 14:52:47,276] replica.Replica<Replica:dfc05>:OUTPUT: Replica tail did not find result cached. Forwarding request to head..
+[2017-11-17 14:52:47,291] replica.Replica<Replica:dfc03>:OUTPUT: Replica Intermediate: replica_1 shuttle received from previous replica : <messages.Shuttle object at 0x7fe5e12ad438>
+[2017-11-17 14:52:47,296] replica.Replica<Replica:dfc02>:OUTPUT: Replica head received forwarded retransmitted request from Replica replica_2
+[2017-11-17 14:52:47,297] replica.Replica<Replica:dfc02>:OUTPUT: Replica head: previously started get('jedi') at 1 . Waiting for result. Starting timer on request from replica replica_2
+[2017-11-17 14:52:47,291] replica.Replica<Replica:dfc03>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_2324' with '{'operation': "get('jedi')", 'client_id': 0, 'sequence_number': 1, 'client': <Client:dfc08>, 'forward_shuttle': <messages.Shuttle object at 0x7fe5e12ad438>, 'replica': <Replica:dfc02>}': name 'self' is not defined
+[2017-11-17 14:52:47,300] replica.Replica<Replica:dfc02>:OUTPUT: Replica head received forwarded retransmitted request from Replica replica_3
+[2017-11-17 14:52:47,300] replica.Replica<Replica:dfc02>:OUTPUT: Replica head: Already started timer for this retransmission request, ignoring the request from replica replica_3
+[2017-11-17 14:52:47,303] replica.Replica<Replica:dfc02>:OUTPUT: Replica head received forwarded retransmitted request from Replica tail
+[2017-11-17 14:52:47,303] replica.Replica<Replica:dfc02>:OUTPUT: Replica head: Already started timer for this retransmission request, ignoring the request from replica tail
+[2017-11-17 14:52:48,263] client.Client<Client:dfc08>:OUTPUT: Client 0 : timed out waiting for result of retransmitted operation, None resending request
+[2017-11-17 14:52:48,265] client.Client<Client:dfc08>:OUTPUT: Client 0 : timed out again while waiting for result of operation, get('jedi') . Retransmitting..
+[2017-11-17 14:52:48,272] replica.Replica<Replica:dfc02>:OUTPUT: Replica head : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-17 14:52:48,273] replica.Replica<Replica:dfc02>:OUTPUT: Replica head : and cache is {}
+[2017-11-17 14:52:48,280] replica.Replica<Replica:dfc03>:OUTPUT: Replica replica_1 : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-17 14:52:48,282] replica.Replica<Replica:dfc03>:OUTPUT: Replica replica_1 : and cache is {}
+[2017-11-17 14:52:48,289] replica.Replica<Replica:dfc04>:OUTPUT: Replica replica_2 : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-17 14:52:48,283] replica.Replica<Replica:dfc03>:OUTPUT: Replica replica_1 did not find result cached. Forwarding request to head..
+[2017-11-17 14:52:48,295] replica.Replica<Replica:dfc04>:OUTPUT: Replica replica_2 : and cache is {}
+[2017-11-17 14:52:48,296] replica.Replica<Replica:dfc04>:OUTPUT: Replica replica_2 did not find result cached. Forwarding request to head..
+[2017-11-17 14:52:48,297] replica.Replica<Replica:dfc02>:OUTPUT: Replica head received forwarded retransmitted request from Replica replica_1
+[2017-11-17 14:52:48,298] replica.Replica<Replica:dfc02>:OUTPUT: Replica head: Already started timer for this retransmission request, ignoring the request from replica replica_1
+[2017-11-17 14:52:48,302] replica.Replica<Replica:dfc06>:OUTPUT: Replica replica_3 : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-17 14:52:48,303] replica.Replica<Replica:dfc06>:OUTPUT: Replica replica_3 : and cache is {}
+[2017-11-17 14:52:48,303] replica.Replica<Replica:dfc06>:OUTPUT: Replica replica_3 did not find result cached. Forwarding request to head..
+[2017-11-17 14:52:48,307] replica.Replica<Replica:dfc02>:OUTPUT: Replica head received forwarded retransmitted request from Replica replica_3
+[2017-11-17 14:52:48,308] replica.Replica<Replica:dfc02>:OUTPUT: Replica head: Already started timer for this retransmission request, ignoring the request from replica replica_3
+[2017-11-17 14:52:48,313] replica.Replica<Replica:dfc02>:OUTPUT: Replica head received forwarded retransmitted request from Replica replica_2
+[2017-11-17 14:52:48,313] replica.Replica<Replica:dfc02>:OUTPUT: Replica head: Already started timer for this retransmission request, ignoring the request from replica replica_2
+[2017-11-17 14:52:48,315] replica.Replica<Replica:dfc05>:OUTPUT: Replica tail : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-17 14:52:48,316] replica.Replica<Replica:dfc05>:OUTPUT: Replica tail : and cache is {}
+[2017-11-17 14:52:48,317] replica.Replica<Replica:dfc05>:OUTPUT: Replica tail did not find result cached. Forwarding request to head..
+[2017-11-17 14:52:48,320] replica.Replica<Replica:dfc02>:OUTPUT: Replica head received forwarded retransmitted request from Replica tail
+[2017-11-17 14:52:48,320] replica.Replica<Replica:dfc02>:OUTPUT: Replica head: Already started timer for this retransmission request, ignoring the request from replica tail
+[2017-11-17 14:52:49,320] client.Client<Client:dfc08>:OUTPUT: Client 0 : timed out waiting for result of retransmitted operation, None resending request
+[2017-11-17 14:52:49,322] client.Client<Client:dfc08>:OUTPUT: Actual result not macthing with expected result
+[2017-11-17 14:52:50,302] replica.Replica<Replica:dfc02>:OUTPUT: Replica head timed out waiting for the result shuttle in retransmission. Sending reconfig request..
+[2017-11-17 14:52:50,305] olympus.Olympus<Olympus:dfc07>:OUTPUT: Olympus: Received reconfiguration request from replica_2 for  timeout in operation  get('jedi')
+[2017-11-17 14:52:50,305] olympus.Olympus<Olympus:dfc07>:OUTPUT: Sending wedge requests each replica
+[2017-11-17 14:52:50,309] replica.Replica<Replica:dfc02>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_3244' with '{'olympus': <Olympus:dfc07>, 'sequence_no': 0}': name 'self' is not defined
+[2017-11-17 14:52:50,315] replica.Replica<Replica:dfc03>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_3244' with '{'olympus': <Olympus:dfc07>, 'sequence_no': 1}': name 'self' is not defined
+[2017-11-17 14:52:50,319] replica.Replica<Replica:dfc04>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_3244' with '{'olympus': <Olympus:dfc07>, 'sequence_no': 2}': name 'self' is not defined
+[2017-11-17 14:52:50,325] replica.Replica<Replica:dfc06>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_3244' with '{'olympus': <Olympus:dfc07>, 'sequence_no': 3}': name 'self' is not defined
+[2017-11-17 14:52:50,331] replica.Replica<Replica:dfc05>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_3244' with '{'olympus': <Olympus:dfc07>, 'sequence_no': 4}': name 'self' is not defined
+[2017-11-17 14:52:51,306] replica.Replica<Replica:dfc06>:OUTPUT: Replica replica_3 timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..
+[2017-11-17 14:52:51,306] replica.Replica<Replica:dfc06>:OUTPUT: Replica replica_3 timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..
+[2017-11-17 14:52:51,307] replica.Replica<Replica:dfc03>:OUTPUT: Replica replica_1 timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..
+[2017-11-17 14:52:51,307] replica.Replica<Replica:dfc03>:OUTPUT: Replica replica_1 timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..
+[2017-11-17 14:52:51,311] replica.Replica<Replica:dfc04>:OUTPUT: Replica replica_2 timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..
+[2017-11-17 14:52:51,311] replica.Replica<Replica:dfc04>:OUTPUT: Replica replica_2 timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..
+[2017-11-17 14:52:51,313] olympus.Olympus<Olympus:dfc07>:OUTPUT: Olympus: Received reconfiguration request from replica_3 for  timeout at intermediate replica in retransmitted request in operation  get('jedi')
+[2017-11-17 14:52:51,314] olympus.Olympus<Olympus:dfc07>:OUTPUT: Olympus: Received reconfiguration request from replica_3 for  timeout at intermediate replica in retransmitted request in operation  get('jedi')
+[2017-11-17 14:52:51,314] olympus.Olympus<Olympus:dfc07>:OUTPUT: Olympus: Received reconfiguration request from replica_1 for  timeout at intermediate replica in retransmitted request in operation  get('jedi')
+[2017-11-17 14:52:51,315] olympus.Olympus<Olympus:dfc07>:OUTPUT: Olympus: Received reconfiguration request from replica_1 for  timeout at intermediate replica in retransmitted request in operation  get('jedi')
+[2017-11-17 14:52:51,315] olympus.Olympus<Olympus:dfc07>:OUTPUT: Olympus: Received reconfiguration request from replica_2 for  timeout at intermediate replica in retransmitted request in operation  get('jedi')
+[2017-11-17 14:52:51,315] olympus.Olympus<Olympus:dfc07>:OUTPUT: Olympus: Received reconfiguration request from replica_2 for  timeout at intermediate replica in retransmitted request in operation  get('jedi')
+[2017-11-17 14:52:51,315] olympus.Olympus<Olympus:dfc07>:ERROR: UnboundLocalError("local variable 'config' referenced before assignment",) when calling handler '_Olympus_handler_892' with '{'operation': "get('jedi')", 'sequence_number': 1, 'reason': 'timeout at intermediate replica in retransmitted request', 'client': 0, 'replica': <Replica:dfc04>, 'replica_id': 'replica_2'}': local variable 'config' referenced before assignment
+[2017-11-17 14:52:51,316] olympus.Olympus<Olympus:dfc07>:ERROR: UnboundLocalError("local variable 'config' referenced before assignment",) when calling handler '_Olympus_handler_892' with '{'operation': "get('jedi')", 'sequence_number': 1, 'reason': 'timeout at intermediate replica in retransmitted request', 'client': 0, 'replica': <Replica:dfc04>, 'replica_id': 'replica_2'}': local variable 'config' referenced before assignment
+[2017-11-17 14:52:51,316] olympus.Olympus<Olympus:dfc07>:ERROR: UnboundLocalError("local variable 'config' referenced before assignment",) when calling handler '_Olympus_handler_892' with '{'operation': "get('jedi')", 'sequence_number': 1, 'reason': 'timeout at intermediate replica in retransmitted request', 'client': 0, 'replica': <Replica:dfc03>, 'replica_id': 'replica_1'}': local variable 'config' referenced before assignment
+[2017-11-17 14:52:51,317] olympus.Olympus<Olympus:dfc07>:ERROR: UnboundLocalError("local variable 'config' referenced before assignment",) when calling handler '_Olympus_handler_892' with '{'operation': "get('jedi')", 'sequence_number': 1, 'reason': 'timeout at intermediate replica in retransmitted request', 'client': 0, 'replica': <Replica:dfc03>, 'replica_id': 'replica_1'}': local variable 'config' referenced before assignment
+[2017-11-17 14:52:51,317] olympus.Olympus<Olympus:dfc07>:ERROR: UnboundLocalError("local variable 'config' referenced before assignment",) when calling handler '_Olympus_handler_892' with '{'operation': "get('jedi')", 'sequence_number': 1, 'reason': 'timeout at intermediate replica in retransmitted request', 'client': 0, 'replica': <Replica:dfc06>, 'replica_id': 'replica_3'}': local variable 'config' referenced before assignment
+[2017-11-17 14:52:51,317] olympus.Olympus<Olympus:dfc07>:ERROR: UnboundLocalError("local variable 'config' referenced before assignment",) when calling handler '_Olympus_handler_892' with '{'operation': "get('jedi')", 'sequence_number': 1, 'reason': 'timeout at intermediate replica in retransmitted request', 'client': 0, 'replica': <Replica:dfc06>, 'replica_id': 'replica_3'}': local variable 'config' referenced before assignment
+[2017-11-17 14:52:51,319] replica.Replica<Replica:dfc05>:OUTPUT: Replica tail timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..
+[2017-11-17 14:52:51,320] replica.Replica<Replica:dfc05>:OUTPUT: Replica tail timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..
+[2017-11-17 14:52:51,326] olympus.Olympus<Olympus:dfc07>:OUTPUT: Olympus: Received reconfiguration request from tail for  timeout at intermediate replica in retransmitted request in operation  get('jedi')
+[2017-11-17 14:52:51,326] olympus.Olympus<Olympus:dfc07>:OUTPUT: Olympus: Received reconfiguration request from tail for  timeout at intermediate replica in retransmitted request in operation  get('jedi')
+[2017-11-17 14:52:51,326] olympus.Olympus<Olympus:dfc07>:ERROR: UnboundLocalError("local variable 'config' referenced before assignment",) when calling handler '_Olympus_handler_892' with '{'operation': "get('jedi')", 'sequence_number': 1, 'reason': 'timeout at intermediate replica in retransmitted request', 'client': 0, 'replica': <Replica:dfc05>, 'replica_id': 'tail'}': local variable 'config' referenced before assignment
+[2017-11-17 14:52:51,326] olympus.Olympus<Olympus:dfc07>:ERROR: UnboundLocalError("local variable 'config' referenced before assignment",) when calling handler '_Olympus_handler_892' with '{'operation': "get('jedi')", 'sequence_number': 1, 'reason': 'timeout at intermediate replica in retransmitted request', 'client': 0, 'replica': <Replica:dfc05>, 'replica_id': 'tail'}': local variable 'config' referenced before assignment
+[2017-11-20 16:16:42,399] main_process.Node_<Node_:b0c01>:OUTPUT: Created replica processes. They will be started from within the olympus process
+[2017-11-20 16:16:42,472] main_process.Node_<Node_:b0c01>:OUTPUT: Created and started olympus process
+[2017-11-20 16:16:42,517] client.Client<Client:e9008>:OUTPUT: Client 0 : setup
+[2017-11-20 16:16:42,526] replica.Replica<Replica:e9004>:OUTPUT: Replica: head started in ACTIVE mode
+[2017-11-20 16:16:42,534] replica.Replica<Replica:e9006>:OUTPUT: Replica: tail started in ACTIVE mode
+[2017-11-20 16:16:42,557] main_process.Node_<Node_:b0c01>:OUTPUT: Created and started client processes
+[2017-11-20 16:16:42,559] client.Client<Client:e9008>:OUTPUT: Client 0 : running
+[2017-11-20 16:16:42,560] client.Client<Client:e9008>:OUTPUT: Client 0 :requesting configuration from Olympus
+[2017-11-20 16:16:42,580] replica.Replica<Replica:e9002>:OUTPUT: Replica: replica_1 started in ACTIVE mode
+[2017-11-20 16:16:42,623] replica.Replica<Replica:e9003>:OUTPUT: Replica: replica_2 started in ACTIVE mode
+[2017-11-20 16:16:42,669] replica.Replica<Replica:e9005>:OUTPUT: Replica: replica_3 started in ACTIVE mode
+[2017-11-20 16:16:42,672] olympus.Olympus<Olympus:e9007>:OUTPUT: Olympus: Sending configuration to client: 0
+[2017-11-20 16:16:42,678] client.Client<Client:e9008>:OUTPUT: Client 0 :received  configuration from Olympus {'config_0': {'head': <Replica:e9004>, 'replica_2': <Replica:e9003>, 'tail': <Replica:e9006>, 'replica_3': <Replica:e9005>, 'replica_1': <Replica:e9002>}}
+[2017-11-20 16:16:42,683] olympus.Olympus<Olympus:e9007>:OUTPUT: Sending keys to client: 0
+[2017-11-20 16:16:42,719] client.Client<Client:e9008>:OUTPUT: Client 0 :received keys from Olympus
+[2017-11-20 16:16:42,723] olympus.Olympus<Olympus:e9007>:OUTPUT: Sending signing keys to client: 0
+[2017-11-20 16:16:42,729] client.Client<Client:e9008>:OUTPUT: Client 0 :received signing keys from Olympus
+[2017-11-20 16:16:42,731] client.Client<Client:e9008>:OUTPUT: Testcase : testcase_5
+[2017-11-20 16:16:42,731] client.Client<Client:e9008>:OUTPUT: Description : For single client and multiple operations check for result.
+[2017-11-20 16:16:42,732] client.Client<Client:e9008>:OUTPUT: Expected results : Client must receive result before timeout and expected dict at the end of workload must match with actual results.
+[2017-11-20 16:16:42,732] client.Client<Client:e9008>:OUTPUT: Expected dict : {'movie': 'luke'}
+[2017-11-20 16:16:42,734] client.Client<Client:e9008>:OUTPUT: client workload : ["put('jedi','luke skywalker')", "slice('jedi','0:4')", "get('jedi')"]
+[2017-11-20 16:16:42,742] replica.Replica<Replica:e9004>:OUTPUT: Replica Head: operation received from client : put('jedi','luke skywalker')
+[2017-11-20 16:16:42,745] replica.Replica<Replica:e9004>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_1946' with '{'sequence_number': 0, 'client_id': 0, 'retransmit_req': False, 'encrypted_operation': b'<\xb1\xe7\xbd\xebg\x8c"\xa2[RF3\xb3\x90\xf0\x8eMy\xf0\xd2\xa7\x04\x96\x1f\x83\x0c\x07\x03\x8e\xb0ZCFwv"\xf4a\xa9\x80\xa5x\xd3\xf5\xfaQR\x87\x89\xc5\x8d1\xda\xcd\xf5\xb0\xfarF\xe4\x1f\xe1C\xb0\xe3&\xdc;\xf5C\x16U\xf5\xad\xdc\xfeKS\xb8\x14\x0b\x14\xef\xfcY\x8a\xf5\x00\x8e\x81O$D\xc1\x8d\x15\xbc*\x93\xcd\x1ah\xf24\x8b\xd0\xf2\xdb\x18\x91\x93\xb5m\x8f\xb0+\x19eu\xa07\xe8\x9cn\xecN"Yo\xbdT', 'client': <Client:e9008>, 'operation_hex': b'2c3f83925e7d2ec8403645a7c49838d4add97c0c7c40bf7b4223d587389de303'}': name 'self' is not defined
+[2017-11-20 16:16:42,750] replica.Replica<Replica:e9004>:OUTPUT: Replica Head: operation received from client : slice('jedi','0:4')
+[2017-11-20 16:16:42,753] replica.Replica<Replica:e9004>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_1946' with '{'sequence_number': 1, 'client_id': 0, 'retransmit_req': False, 'encrypted_operation': b"YNH1\x95z\x03\xb4\xa3L(\xa1$l\xe3\x81zTp=\x9d\xbe\xc3\xc2B\xa2!\xf8S/K'!7\x0e;?\x1b\x1d\x01<r\xce\xe5W\xaa\xd04?y\x16e\xef\xae\xd6a*a\xea\x17\xa5\xed\xe2\x1b\xf1\xee\xc9h%%\xcf\x12\x82\\\xed\xfcc\x1f\xf24`Iq/\r\x94\xf2\x04\xebd\xe5\xb8\x1e\xad\xc7\x9a\xd5L\xea\x8fT\xa4\x12\x9b>\xbdB\x9a\x1f\x06\xc3K.dW\xf2\x81F4K[\x82\x9d", 'client': <Client:e9008>, 'operation_hex': b'b3b2cb5db1ee4d81fd9d913fd2f5d5236cdfd00f46fe931eb8b20ec1ffb0ee27'}': name 'self' is not defined
+[2017-11-20 16:16:42,755] replica.Replica<Replica:e9004>:OUTPUT: Replica Head: operation received from client : get('jedi')
+[2017-11-20 16:16:42,756] replica.Replica<Replica:e9004>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_1946' with '{'sequence_number': 2, 'client_id': 0, 'retransmit_req': False, 'encrypted_operation': b'\xb6\xc7\xa0B\r\xf2\x1cN\xab\x99O\xc5\xb4\xd6g\xa9\x9d,\x83\x8d\x9f\xbf~&\x8a\xde\x8d\x10\x99)\xb7\x84\x8aTpF\xf7\x1cN\xb4\xc4{\xadx\x10\xb6\x16\xb6-68\x8e\x9b!\x04\x83\x1cP\xd0u\xee\xfde\xea\xa7\xa7i\x9a\xf7Y\xc9\xe9\xe0\xf7E@#\x88\x06A\xaaN\xec\xfa#\t8\xcb\xe1\x9e\x0f\xcc\xe3\xdc>\x12\x89s\xcb;\xb7F\x0b\xfc\xc5\xbd\xc0\xfd\xc0\xc7(D\x17\x7f,', 'client': <Client:e9008>, 'operation_hex': b'32d54e52a158f9ae49b24061e7aa3273b06cbed99e0dd38dda553748f841f84b'}': name 'self' is not defined
+[2017-11-20 16:16:43,753] client.Client<Client:e9008>:OUTPUT: Operation having seqno  1 get('jedi')  timed out hence retransmitting
+[2017-11-20 16:16:43,759] replica.Replica<Replica:e9004>:OUTPUT: Replica head : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-20 16:16:43,760] replica.Replica<Replica:e9004>:OUTPUT: Replica head : and cache is {}
+[2017-11-20 16:16:43,773] replica.Replica<Replica:e9003>:OUTPUT: Replica replica_2 : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-20 16:16:43,777] replica.Replica<Replica:e9003>:OUTPUT: Replica replica_2 : and cache is {}
+[2017-11-20 16:16:43,777] replica.Replica<Replica:e9003>:OUTPUT: Replica replica_2 did not find result cached. Forwarding request to head..
+[2017-11-20 16:16:43,784] replica.Replica<Replica:e9004>:OUTPUT: Replica head received forwarded retransmitted request from Replica replica_2
+[2017-11-20 16:16:43,785] replica.Replica<Replica:e9004>:OUTPUT: starting new operation get('jedi') on request from replica replica_2
+[2017-11-20 16:16:43,786] replica.Replica<Replica:e9004>:OUTPUT: Replica head : Verified history
+[2017-11-20 16:16:43,786] replica.Replica<Replica:e9004>:OUTPUT: Replica head : successfully verified previous order statements
+[2017-11-20 16:16:43,798] replica.Replica<Replica:e9004>:OUTPUT: Replica Head: Added operation get('jedi') at slot 1
+[2017-11-20 16:16:43,798] replica.Replica<Replica:e9004>:OUTPUT: Replica: head orderCommand transition
+[2017-11-20 16:16:43,799] replica.Replica<Replica:e9004>:OUTPUT: State of dictionary at Head: {}
+[2017-11-20 16:16:43,799] replica.Replica<Replica:e9004>:OUTPUT: Result obtained at Head for operation: get('jedi') is:  
+[2017-11-20 16:16:43,805] replica.Replica<Replica:e9006>:OUTPUT: Replica tail : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-20 16:16:43,805] replica.Replica<Replica:e9006>:OUTPUT: Replica tail : and cache is {}
+[2017-11-20 16:16:43,805] replica.Replica<Replica:e9006>:OUTPUT: Replica tail did not find result cached. Forwarding request to head..
+[2017-11-20 16:16:43,808] replica.Replica<Replica:e9005>:OUTPUT: Replica replica_3 : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-20 16:16:43,811] replica.Replica<Replica:e9004>:OUTPUT: Replica Head: Sequence number 1
+[2017-11-20 16:16:43,801] replica.Replica<Replica:e9002>:OUTPUT: Replica replica_1 : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-20 16:16:43,812] replica.Replica<Replica:e9002>:OUTPUT: Replica replica_1 : and cache is {}
+[2017-11-20 16:16:43,812] replica.Replica<Replica:e9002>:OUTPUT: Replica replica_1 did not find result cached. Forwarding request to head..
+[2017-11-20 16:16:43,815] replica.Replica<Replica:e9004>:OUTPUT: Replica head received forwarded retransmitted request from Replica tail
+[2017-11-20 16:16:43,809] replica.Replica<Replica:e9005>:OUTPUT: Replica replica_3 : and cache is {}
+[2017-11-20 16:16:43,817] replica.Replica<Replica:e9005>:OUTPUT: Replica replica_3 did not find result cached. Forwarding request to head..
+[2017-11-20 16:16:43,818] replica.Replica<Replica:e9004>:OUTPUT: Replica head: previously started get('jedi') at 1 . Waiting for result. Starting timer on request from replica tail
+[2017-11-20 16:16:43,820] replica.Replica<Replica:e9004>:OUTPUT: Replica head received forwarded retransmitted request from Replica replica_1
+[2017-11-20 16:16:43,817] replica.Replica<Replica:e9002>:OUTPUT: Replica Intermediate: replica_1 shuttle received from previous replica : <messages.Shuttle object at 0x7fb459fb5828>
+[2017-11-20 16:16:43,821] replica.Replica<Replica:e9002>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_2324' with '{'sequence_number': 1, 'forward_shuttle': <messages.Shuttle object at 0x7fb459fb5828>, 'client_id': 0, 'client': <Client:e9008>, 'replica': <Replica:e9004>, 'operation': "get('jedi')"}': name 'self' is not defined
+[2017-11-20 16:16:43,820] replica.Replica<Replica:e9004>:OUTPUT: Replica head: Already started timer for this retransmission request, ignoring the request from replica replica_1
+[2017-11-20 16:16:43,824] replica.Replica<Replica:e9004>:OUTPUT: Replica head received forwarded retransmitted request from Replica replica_3
+[2017-11-20 16:16:43,824] replica.Replica<Replica:e9004>:OUTPUT: Replica head: Already started timer for this retransmission request, ignoring the request from replica replica_3
+[2017-11-20 16:16:44,806] client.Client<Client:e9008>:OUTPUT: Client 0 : timed out waiting for result of retransmitted operation, None resending request
+[2017-11-20 16:16:44,807] client.Client<Client:e9008>:OUTPUT: Client 0 : timed out again while waiting for result of operation, get('jedi') . Retransmitting..
+[2017-11-20 16:16:44,816] replica.Replica<Replica:e9004>:OUTPUT: Replica head : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-20 16:16:44,817] replica.Replica<Replica:e9004>:OUTPUT: Replica head : and cache is {}
+[2017-11-20 16:16:44,824] replica.Replica<Replica:e9002>:OUTPUT: Replica replica_1 : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-20 16:16:44,833] replica.Replica<Replica:e9002>:OUTPUT: Replica replica_1 : and cache is {}
+[2017-11-20 16:16:44,839] replica.Replica<Replica:e9005>:OUTPUT: Replica replica_3 : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-20 16:16:44,840] replica.Replica<Replica:e9005>:OUTPUT: Replica replica_3 : and cache is {}
+[2017-11-20 16:16:44,843] replica.Replica<Replica:e9002>:OUTPUT: Replica replica_1 did not find result cached. Forwarding request to head..
+[2017-11-20 16:16:44,831] replica.Replica<Replica:e9003>:OUTPUT: Replica replica_2 : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-20 16:16:44,845] replica.Replica<Replica:e9003>:OUTPUT: Replica replica_2 : and cache is {}
+[2017-11-20 16:16:44,840] replica.Replica<Replica:e9005>:OUTPUT: Replica replica_3 did not find result cached. Forwarding request to head..
+[2017-11-20 16:16:44,846] replica.Replica<Replica:e9003>:OUTPUT: Replica replica_2 did not find result cached. Forwarding request to head..
+[2017-11-20 16:16:44,858] replica.Replica<Replica:e9006>:OUTPUT: Replica tail : retransmit request received from client for operation: b"get('jedi')" sequence number: 1
+[2017-11-20 16:16:44,859] replica.Replica<Replica:e9006>:OUTPUT: Replica tail : and cache is {}
+[2017-11-20 16:16:44,859] replica.Replica<Replica:e9006>:OUTPUT: Replica tail did not find result cached. Forwarding request to head..
+[2017-11-20 16:16:44,861] replica.Replica<Replica:e9004>:OUTPUT: Replica head received forwarded retransmitted request from Replica replica_3
+[2017-11-20 16:16:44,862] replica.Replica<Replica:e9004>:OUTPUT: Replica head: Already started timer for this retransmission request, ignoring the request from replica replica_3
+[2017-11-20 16:16:44,863] replica.Replica<Replica:e9004>:OUTPUT: Replica head received forwarded retransmitted request from Replica replica_1
+[2017-11-20 16:16:44,866] replica.Replica<Replica:e9004>:OUTPUT: Replica head: Already started timer for this retransmission request, ignoring the request from replica replica_1
+[2017-11-20 16:16:44,867] replica.Replica<Replica:e9004>:OUTPUT: Replica head received forwarded retransmitted request from Replica replica_2
+[2017-11-20 16:16:44,867] replica.Replica<Replica:e9004>:OUTPUT: Replica head: Already started timer for this retransmission request, ignoring the request from replica replica_2
+[2017-11-20 16:16:44,869] replica.Replica<Replica:e9004>:OUTPUT: Replica head received forwarded retransmitted request from Replica tail
+[2017-11-20 16:16:44,869] replica.Replica<Replica:e9004>:OUTPUT: Replica head: Already started timer for this retransmission request, ignoring the request from replica tail
+[2017-11-20 16:16:45,865] client.Client<Client:e9008>:OUTPUT: Client 0 : timed out waiting for result of retransmitted operation, None resending request
+[2017-11-20 16:16:45,918] client.Client<Client:e9008>:OUTPUT: Actual result not macthing with expected result
+[2017-11-20 16:16:46,824] replica.Replica<Replica:e9004>:OUTPUT: Replica head timed out waiting for the result shuttle in retransmission. Sending reconfig request..
+[2017-11-20 16:16:46,830] olympus.Olympus<Olympus:e9007>:OUTPUT: Olympus: Received reconfiguration request from tail for  timeout in operation  get('jedi')
+[2017-11-20 16:16:46,831] olympus.Olympus<Olympus:e9007>:OUTPUT: Sending wedge requests each replica
+[2017-11-20 16:16:46,836] replica.Replica<Replica:e9004>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_3244' with '{'olympus': <Olympus:e9007>, 'sequence_no': 0}': name 'self' is not defined
+[2017-11-20 16:16:46,841] replica.Replica<Replica:e9002>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_3244' with '{'olympus': <Olympus:e9007>, 'sequence_no': 1}': name 'self' is not defined
+[2017-11-20 16:16:46,845] replica.Replica<Replica:e9003>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_3244' with '{'olympus': <Olympus:e9007>, 'sequence_no': 2}': name 'self' is not defined
+[2017-11-20 16:16:46,850] replica.Replica<Replica:e9005>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_3244' with '{'olympus': <Olympus:e9007>, 'sequence_no': 3}': name 'self' is not defined
+[2017-11-20 16:16:46,857] replica.Replica<Replica:e9006>:ERROR: NameError("name 'self' is not defined",) when calling handler '_Replica_handler_3244' with '{'olympus': <Olympus:e9007>, 'sequence_no': 4}': name 'self' is not defined
+[2017-11-20 16:16:47,853] replica.Replica<Replica:e9002>:OUTPUT: Replica replica_1 timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..
+[2017-11-20 16:16:47,854] replica.Replica<Replica:e9002>:OUTPUT: Replica replica_1 timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..
+[2017-11-20 16:16:47,854] replica.Replica<Replica:e9003>:OUTPUT: Replica replica_2 timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..
+[2017-11-20 16:16:47,855] replica.Replica<Replica:e9003>:OUTPUT: Replica replica_2 timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..
+[2017-11-20 16:16:47,860] olympus.Olympus<Olympus:e9007>:OUTPUT: Olympus: Received reconfiguration request from replica_1 for  timeout at intermediate replica in retransmitted request in operation  get('jedi')
+[2017-11-20 16:16:47,861] olympus.Olympus<Olympus:e9007>:OUTPUT: Olympus: Received reconfiguration request from replica_1 for  timeout at intermediate replica in retransmitted request in operation  get('jedi')
+[2017-11-20 16:16:47,861] olympus.Olympus<Olympus:e9007>:OUTPUT: Olympus: Received reconfiguration request from replica_2 for  timeout at intermediate replica in retransmitted request in operation  get('jedi')
+[2017-11-20 16:16:47,862] olympus.Olympus<Olympus:e9007>:OUTPUT: Olympus: Received reconfiguration request from replica_2 for  timeout at intermediate replica in retransmitted request in operation  get('jedi')
+[2017-11-20 16:16:47,862] olympus.Olympus<Olympus:e9007>:ERROR: UnboundLocalError("local variable 'config' referenced before assignment",) when calling handler '_Olympus_handler_892' with '{'sequence_number': 1, 'replica_id': 'replica_2', 'client': 0, 'reason': 'timeout at intermediate replica in retransmitted request', 'replica': <Replica:e9003>, 'operation': "get('jedi')"}': local variable 'config' referenced before assignment
+[2017-11-20 16:16:47,862] olympus.Olympus<Olympus:e9007>:ERROR: UnboundLocalError("local variable 'config' referenced before assignment",) when calling handler '_Olympus_handler_892' with '{'sequence_number': 1, 'replica_id': 'replica_2', 'client': 0, 'reason': 'timeout at intermediate replica in retransmitted request', 'replica': <Replica:e9003>, 'operation': "get('jedi')"}': local variable 'config' referenced before assignment
+[2017-11-20 16:16:47,862] olympus.Olympus<Olympus:e9007>:ERROR: UnboundLocalError("local variable 'config' referenced before assignment",) when calling handler '_Olympus_handler_892' with '{'sequence_number': 1, 'replica_id': 'replica_1', 'client': 0, 'reason': 'timeout at intermediate replica in retransmitted request', 'replica': <Replica:e9002>, 'operation': "get('jedi')"}': local variable 'config' referenced before assignment
+[2017-11-20 16:16:47,862] olympus.Olympus<Olympus:e9007>:ERROR: UnboundLocalError("local variable 'config' referenced before assignment",) when calling handler '_Olympus_handler_892' with '{'sequence_number': 1, 'replica_id': 'replica_1', 'client': 0, 'reason': 'timeout at intermediate replica in retransmitted request', 'replica': <Replica:e9002>, 'operation': "get('jedi')"}': local variable 'config' referenced before assignment
+[2017-11-20 16:16:47,865] replica.Replica<Replica:e9005>:OUTPUT: Replica replica_3 timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..
+[2017-11-20 16:16:47,865] replica.Replica<Replica:e9005>:OUTPUT: Replica replica_3 timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..
+[2017-11-20 16:16:47,868] replica.Replica<Replica:e9006>:OUTPUT: Replica tail timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..
+[2017-11-20 16:16:47,868] replica.Replica<Replica:e9006>:OUTPUT: Replica tail timed out waiting for the result shuttle in retransmission after forwarding request to head. Sending reconfig request..
+[2017-11-20 16:16:47,871] olympus.Olympus<Olympus:e9007>:OUTPUT: Olympus: Received reconfiguration request from replica_3 for  timeout at intermediate replica in retransmitted request in operation  get('jedi')
+[2017-11-20 16:16:47,872] olympus.Olympus<Olympus:e9007>:OUTPUT: Olympus: Received reconfiguration request from replica_3 for  timeout at intermediate replica in retransmitted request in operation  get('jedi')
+[2017-11-20 16:16:47,872] olympus.Olympus<Olympus:e9007>:OUTPUT: Olympus: Received reconfiguration request from tail for  timeout at intermediate replica in retransmitted request in operation  get('jedi')
+[2017-11-20 16:16:47,872] olympus.Olympus<Olympus:e9007>:OUTPUT: Olympus: Received reconfiguration request from tail for  timeout at intermediate replica in retransmitted request in operation  get('jedi')
+[2017-11-20 16:16:47,873] olympus.Olympus<Olympus:e9007>:ERROR: UnboundLocalError("local variable 'config' referenced before assignment",) when calling handler '_Olympus_handler_892' with '{'sequence_number': 1, 'replica_id': 'tail', 'client': 0, 'reason': 'timeout at intermediate replica in retransmitted request', 'replica': <Replica:e9006>, 'operation': "get('jedi')"}': local variable 'config' referenced before assignment
+[2017-11-20 16:16:47,873] olympus.Olympus<Olympus:e9007>:ERROR: UnboundLocalError("local variable 'config' referenced before assignment",) when calling handler '_Olympus_handler_892' with '{'sequence_number': 1, 'replica_id': 'tail', 'client': 0, 'reason': 'timeout at intermediate replica in retransmitted request', 'replica': <Replica:e9006>, 'operation': "get('jedi')"}': local variable 'config' referenced before assignment
+[2017-11-20 16:16:47,873] olympus.Olympus<Olympus:e9007>:ERROR: UnboundLocalError("local variable 'config' referenced before assignment",) when calling handler '_Olympus_handler_892' with '{'sequence_number': 1, 'replica_id': 'replica_3', 'client': 0, 'reason': 'timeout at intermediate replica in retransmitted request', 'replica': <Replica:e9005>, 'operation': "get('jedi')"}': local variable 'config' referenced before assignment
+[2017-11-20 16:16:47,873] olympus.Olympus<Olympus:e9007>:ERROR: UnboundLocalError("local variable 'config' referenced before assignment",) when calling handler '_Olympus_handler_892' with '{'sequence_number': 1, 'replica_id': 'replica_3', 'client': 0, 'reason': 'timeout at intermediate replica in retransmitted request', 'replica': <Replica:e9005>, 'operation': "get('jedi')"}': local variable 'config' referenced before assignment

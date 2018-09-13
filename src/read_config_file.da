@@ -1,0 +1,80 @@
+config = {}
+client_properties = {}
+olympus_properties = {}
+replica_properties = {}
+failures_scenario_properties = {}
+
+import json
+
+def read_config_file():
+    with open('../config/config.txt', 'r') as f:
+    #with open('../../demo_phase3/perform900.txt', 'r') as f:
+        for line in f:
+            if line[0] != '#':
+                (key, sep, val) = line.partition('=')
+                # if the line does not contain '=',
+                # it is invalid and hence ignored
+                if len(sep) != 0:
+                    val = val.strip()
+                    config[key.strip()] = int(val) if str.isdecimal(val) else val
+
+
+def separate_properties():
+
+    olympus_properties['t'] = config['t']
+    # olympus_properties['hosts'] = config['hosts']
+    # olympus_properties['replica_hosts'] = config['replica_hosts']
+    olympus_properties['head_timeout'] = config['head_timeout']
+    olympus_properties['nonhead_timeout'] = config['nonhead_timeout']
+    olympus_properties['checkpt_interval'] = config['checkpt_interval']
+
+    client_properties['num_client'] = config['num_client']
+    client_properties['client_timeout'] = config['client_timeout']
+    # client_properties['hosts'] = config['hosts']
+    # client_properties['client_hosts'] = config['client_hosts']
+    client_properties['workload'] = []
+
+
+    for key in config:
+        if key.startswith('workload'):
+            client_properties['workload'].append(config[key])
+        elif key.startswith('failures'):
+            config_id = str(key.split('[')[1].split(',')[0])
+            replica_id = str(key.split('[')[1].split(',')[1].strip(']'))
+            if 'config_' + config_id not in failures_scenario_properties:
+                failures_scenario_properties['config_' + config_id] = {}
+            if 'replica_' + replica_id not in failures_scenario_properties['config_' + config_id]:
+                failures_scenario_properties['config_' + config_id]['replica_' + replica_id] = []
+            for failures in config[key].split(';'):
+                failure = failures.split(',')
+                tuple = ",".join(failure[:-1]).split('(')[1].replace(" ", "").strip(')')
+                failure_trigger = ",".join(failure[:-1]).split('(')[0].replace(" ", "")
+                failure_error = failure[-1].replace(" ", "")
+                failures_scenario_properties['config_' + config_id]['replica_'+replica_id].append([tuple, failure_trigger, failure_error])
+
+
+def get_client_properties():
+    return client_properties
+
+
+def get_olympus_properties():
+    return olympus_properties
+
+
+def get_failure_scenario_properties():
+    return failures_scenario_properties
+
+
+def get_testing_file(test_file_name):
+    with open(test_file_name) as data_file:
+        data = json.load(data_file)
+    return data
+
+read_config_file()
+separate_properties()
+#get_testing_file(test_file_name)
+
+#print("config :: " + str(config) + "\n\n")
+#print("client properties :: " + str(get_client_properties()) + "\n\n")
+#print("olympus properties :: " + str(get_olympus_properties()) + "\n\n")
+print("failure scenario properties :: " + str(get_failure_scenario_properties()) + "\n\n")

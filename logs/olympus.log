@@ -1,0 +1,4 @@
+[2017-10-31 23:19:58,176] olympus.Olympus<Olympus:29402#OlympusNode>:OUTPUT: Olympus: Sending configuration to client: 0
+[2017-10-31 23:19:58,180] olympus.Olympus<Olympus:29402#OlympusNode>:OUTPUT: Sending keys to client: 0
+[2017-10-31 23:19:58,223] olympus.Olympus<Olympus:29402#OlympusNode>:OUTPUT: Sending signing keys to client: 0
+[2017-10-31 23:24:06,677] da.api<MainProcess>:WARNING: Received keyboard interrupt. 

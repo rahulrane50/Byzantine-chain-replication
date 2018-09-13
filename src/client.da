@@ -1,0 +1,361 @@
+import sys
+import random
+import nacl.hash
+import nacl.encoding
+import nacl.signing
+import pickle
+import copy
+import time
+from nacl.bindings.utils import sodium_memcmp
+from nacl.public import PrivateKey, Box
+
+olympus = import_da('olympus')
+config_file = import_da('read_config_file')
+sign = import_da('sign')
+operations = import_da('operations')
+
+config(channel = 'fifo')
+config(clock = 'lamport')
+
+#client_properties = {}
+
+operations_dict = {
+                    0: 'put(\'message\', \'hello\')',
+                    1: 'get(\'message\')',
+                    2: 'slice(\'message\', \'1:5\')',
+                    3: 'append(\'message\', \', world\')'
+                }
+expected_dict = {}
+requests_info = {}
+
+def read_properties():
+    config_file.read_config_file()
+    return config_file.get_client_properties()
+
+
+def pseudorandom(seed_value, number):
+    client_workload = []
+    random.seed(seed_value)
+    operations = [random.randint(0,3) for index in range(0, number)]
+
+    for index in range(0, len(operations)):
+        client_workload.append(operations_dict[operations[index]])
+    return client_workload
+
+
+def get_workload(workload):
+    client_workload = []
+    for index in range(0, len(workload)):
+        if workload[index].startswith('pseudorandom'):
+            function = workload[index]
+            args = (function)[function.find('(') + 1:function.find(')')]
+            values = args.split(',')
+
+            client_workload.append(pseudorandom(int(values[0].strip()), int(values[1].strip())))
+        else:
+            client_workload.append([operation.strip() for operation in workload[index].split(';')])
+    # for op in client_workload:
+    #     if not op:
+    #         client_workload.remove(op)
+    #     print("######## operation", op)
+    return client_workload
+
+
+def verify_result_statement(verify_key, statement, hashed_result):
+    verified = True
+    result_statement = None
+    verified_result_statement = sign.verify_sign(verify_key, statement)
+    #print("verified_result_statement :", verified_result_statement)
+    if verified_result_statement == None:
+        verified = False
+        return verified, None
+    if verified:
+        result_statement = pickle.loads(verified_result_statement)
+    if not sodium_memcmp(hashed_result, result_statement.hash):
+        verified = False
+    return verified, result_statement
+
+
+def verify_expected_result(client_id, expected_dict):
+    verified = True
+    fname = "testcase_" + str(client_id) + "_result.txt"
+    testing_file = open(fname, "rb")    
+    actual_dict = pickle.load(testing_file)
+    if (set(actual_dict.keys()) != set(expected_dict.keys())):
+        verified = False
+    
+    for key, val in actual_dict.items():
+        try:
+            if expected_dict[key] != val:
+                print("Actual result [%s] not matching with expected result [%s]"%(val, expected_dict[key]))
+                verified = False
+                break
+        except KeyError:
+            print('The key', key, 'was not found in the dictionary')
+    return verified
+
+
+def check_timeout(client_timeout, reset=False):
+    for key, val in requests_info.items():
+        if((time.time() - val) >= float(client_timeout)):
+            if reset:
+                requests_info[key] = time.time()
+            return (True, key[1])
+    return False, None
+
+
+class Client(process):
+    def setup(client_timeout:int, client_id: int, olympus:olympus.Olympus, testing_scenarios:dict, num_replicas:int):
+        output('Client', client_id, ': setup')
+        self.configuration = {}
+        self.public_key_map = {}
+        self.priv_key = None
+        self.sequence_number = 0
+        self.results = []
+        self.verify_key_hex_map = {}
+        self.signing_key = None
+        self.sent = {}
+        #read workload from config file and get workload for client id
+        #this will happen for every client
+        #read file only once and get from there, later
+        self.client_properties = read_properties()
+        #self.client_workload = []
+        # self.testing_scenarios = config_file.get_testing_file()
+        self.new_config = False
+
+
+    def get_configuration():
+        #get the current configuration from Olympus
+        clk = logical_clock()
+        output('Client', client_id, ': requesting configuration from Olympus')
+        send(('GetConfiguration', client_id), to=olympus)        
+        await(some(received(('Configuration', configuration, config_id,), clk=rclk), has=(rclk > clk)))
+
+        send(('GetKeys', client_id), to=olympus)
+        await(some(received(('Keys', public_key_map, priv_key,), clk=rclk), has=(rclk > clk)))
+
+        send(('GetSigningKeys', client_id), to=olympus)
+        await(some(received(('SigningKeys', key, key_map), clk=rclk), has=(rclk > clk)))
+
+
+    def run():
+        output('Client', client_id, ': running')
+
+        #get the current configuration from Olympus
+        get_configuration()
+
+        #for all operations in this client's workload, send requests to head
+        client_box = Box(priv_key, public_key_map['head'])
+        global expected_dict
+        for key, val in testing_scenarios.items():
+            output("Testcase :", key)
+            output("Description :", val["Description"])
+            output("Expected results :", val["Expected Results"])
+            perform_op = True
+            if val.get("expected_dict"):
+                output("Expected dict :", val["expected_dict"])
+                perform_op = False
+                expected_dict = val["expected_dict"]
+            else:
+                expected_dict = {}
+            client_val = val.get(('client_' + str(client_id)), None)
+            if client_val:
+                if client_val.get('workload'):
+                    client_workload = get_workload(client_val["workload"])[0]
+                else:
+                    client_workload = get_workload(client_properties['workload'])[0]
+            else:
+                client_workload = get_workload(client_properties['workload'])[0]
+            output("client workload :", client_workload)
+            for operation in client_workload:
+                if not operation == '':
+                    signed_operation = sign.sign_msg(signing_key, pickle.dumps((operation, sequence_number, client_id)))
+                    encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
+                    retransmit_req = False
+                    retransmit=val.get("retransmit_request")
+                    if retransmit:
+                        if client_id == retransmit[0] and sequence_number == retransmit[1]:
+                            retransmit_req = True
+                    output('Client', client_id, 'sending operation', operation, 'to replica head.')
+                    send(('ClientRequest', encrypted_operation, operation_hex, client_id, retransmit_req,), to=configuration['head'])
+                    # saving starting time of each request
+                    requests_info[(client_id, sequence_number)] = time.time()
+                    sequence_number += 1
+                    if perform_op:
+                        result = operations.perform_operation(operation, expected_dict)
+
+            if await(check_timeout(client_timeout)[0] or (len(listof(tail, received(('Result', result_proof, result, identifier, operation,), from_=tail))) == len(client_workload))):
+                timed_out, seqno = check_timeout(client_timeout, reset=True)
+                if timed_out:
+                    output("Client", client_id, "Operation having seqno ", seqno, operation, " timed out. Hence will retransmit.")
+                    output('Configuration present with client.', configuration, '. Asking for configuration from Olympus either way.')
+                    get_configuration()
+                    output('Client', client_id, 'received configuration. Now retransmitting request..')
+                    received_result = retransmit_request(operation, seqno)
+                    if(not received_result):
+                        output("Client", client_id, ": timed out again while waiting for result of operation,", operation, ". Retransmitting..")
+                        received_result = retransmit_request(operation, seqno)
+                        output('Configuration present with client ', configuration)
+                else:
+                    output('result received')
+            elif timeout(client_timeout):
+                output('Client', client_id, ': timed out waiting for result, resending request')
+                retransmit_request(operation, seqno)
+
+
+            verified = verify_expected_result(client_id, expected_dict)
+            if verified: 
+                output("Actual result matching with expected result")
+            else:
+                output("Actual result not macthing with expected result")
+
+
+    def synchronous_operations():
+        for operation in client_workload:
+            clk = logical_clock()
+            signed_operation = sign.sign_msg(signing_key, operation)
+            encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
+            send(('ClientRequest', encrypted_operation, operation_hex, sequence_number, client_id), to=configuration['head'])
+            sequence_number += 1
+
+            if await(some(received(('Result', result_proof, result, identifier,), clk=rclk), has=(rclk > clk))):
+                output('Client', client_id, ': received result')
+            elif timeout(client_timeout):
+                output('Client', client_id, ': timed out waiting for result, resending request')
+
+
+    def receive(msg=('Configuration', config, config_id), from_=olympus):
+        configuration = config
+        output('Client', client_id, ':received configuration from Olympus', configuration, '. Configuration no: ', config_id)
+    
+    def verify_results(result, result_proof):
+        count = num_replicas
+        t = (num_replicas - 1)/2
+        #verify hash
+        hashed_result = sign.generate_hash(result.encode('ascii'))
+        result_statements = result_proof.statements
+        verified = True        
+        verified, result_statement = verify_result_statement(verify_key_hex_map['head'], result_statements[0], hashed_result)
+        if verified:
+            results.append(result)
+
+        index = 1
+        for statement in result_statements[1:-1]:
+            verified, result_statement = verify_result_statement(verify_key_hex_map['replica_'+str(index)], statement, hashed_result)
+            if verified:
+                results.append(result)
+                # break
+            elif not verified:
+                count -= 1
+            index += 1
+        verified, result_statement = verify_result_statement(verify_key_hex_map['tail'], result_statements[-1], hashed_result)
+        if verified:
+            results.append(result)
+        return count, verified
+
+
+    def receive(msg=('Result', result_proof, result, identifier, operation,), from_=tail):
+        output('Client', client_id,'received result shuttle', result_proof, result)
+        if len(identifier.split('_')) == 3 and identifier.split('_')[2] == 'resent':
+            output('Client', client_id,'received result for restransmitted request', identifier.split('_')[1])
+        count = num_replicas
+        t = (num_replicas - 1)/2
+        #verify hash
+        count, verified = verify_results(result, result_proof)
+
+        if verified or (count >= t + 1):
+            output('Client',client_id, ': Result:', result, 'received and verified for operation,', operation)
+        else:
+            output("Result statement of replica is not verified hence retransmitting.")
+            retransmit_request(operation, identifier.split('_')[1])
+
+
+    def receive(msg=('OlympusResult', result_proof, result, identifier, operation,), from_=olympus):
+        output('Client', client_id,'received result shuttle from olympus', result_proof, result)
+        if len(identifier.split('_')) == 3 and identifier.split('_')[2] == 'resent':
+            output('Client', client_id,'received result for restransmitted request', identifier.split('_')[1])
+        output('Client',client_id, ': Result:', result, 'received for operation from Olympus,', operation)
+        # count = num_replicas
+        # t = (num_replicas - 1)/2
+        # #verify hash
+        # count, verified = verify_results(result, result_proof)
+
+        # if verified and count >= t + 1:
+        #     output('Client',client_id, ': Result:', result, 'received and verified for operation,', operation)
+        # else:
+        #     output("Result statement of replica :",  'replica_' + str(index), " is not verified hence retransmitting.")
+        #     retransmit_request(result_statement.operation, identifier.split('_')[1])
+
+
+    def receive(msg=('RetransmitResult', result_proof, result, identifier, operation,), from_=tail):
+        output('Client', client_id,'received result shuttle', result_proof, result)
+        if len(identifier.split('_')) == 3 and identifier.split('_')[2] == 'resent':
+            output('Client', client_id,'received result for restransmitted request', identifier.split('_')[1])
+
+        count = num_replicas
+        t = (num_replicas - 1)/2
+        #verify hash
+        count, verified = verify_results(result, result_proof)
+
+        if verified or (count >= t + 1):
+            output('Client',client_id, ': Result:', result, 'received and verified for operation,', operation)
+        else:
+            output("Result statement of replica is not verified hence retransmitting.")
+            retransmit_request(operation, identifier.split('_')[1])
+
+
+    # replicas reply with error statement if they are immutable
+    def receive(msg=('ErrorStatement', replica_id,), from_=replica):
+        output('Client ', client_id, 'received error statement from replica', replica_id)
+        # get new configuration from olympus        
+        if not new_config:
+            get_configuration()
+            output('Getting new configuration from Olympus')
+            new_config = True
+        # time.sleep(5)
+
+
+    def receive(msg=('Keys', key_map, key), from_=olympus):
+        public_key_map = key_map
+        priv_key = key
+        output('Client', client_id, ':received keys from Olympus')
+
+
+    def receive(msg=('SigningKeys', key, key_map), from_=olympus):
+        self.verify_key_hex_map = key_map
+        self.signing_key = key
+
+        output('Client', client_id, ':received signing keys from Olympus')
+
+
+    def retransmit_request(operation, sequence_number):
+        index = 0
+        received_result = False
+        client_box = Box(priv_key, public_key_map['head'])
+
+        signed_operation = sign.sign_msg(signing_key, pickle.dumps((operation, sequence_number, client_id)))
+        encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
+        send(('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, client_id), to=configuration['head'])
+
+        for index in range(1, len(configuration) - 1):
+            client_box = Box(priv_key, public_key_map['replica_' + str(index)])
+            encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)          
+            send(('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, client_id), to=configuration['replica_' + str(index)])
+
+        client_box = Box(priv_key, public_key_map['tail'])
+        # signed_operation = sign.sign_msg(signing_key, operation)
+        encrypted_operation, operation_hex = sign.encrypt_msg(signed_operation, client_box)
+        send(('ReTransmittedRequest', encrypted_operation, operation_hex, sequence_number, client_id), to=configuration['tail'])
+
+        if await(some(received(('RetransmitResult', result_proof, result, identifier, operation,)), has=(identifier == str(client_id) + '_' + str(sequence_number) + '_' + 'resent'))):
+            output('Client', client_id, ': Result:', result, 'received and verified for retransmitted operation,', operation)
+            received_result = True
+        elif timeout(client_timeout):
+            output('Client', client_id, ': timed out waiting for result of retransmitted operation,', operation, 'resending request')
+
+        return received_result
+
+
+
+def main():
+    print('Client main method')

@@ -1,0 +1,666 @@
+import sys
+import nacl.utils
+import pickle
+import time
+from nacl.public import PrivateKey, Box
+import nacl.hash
+import nacl.encoding
+import nacl.signing
+from nacl.bindings.utils import sodium_memcmp
+import itertools
+
+# config(channel is fifo, clk is lamport)
+config(channel = 'fifo')
+config(clock = 'lamport')
+
+replica = import_da('replica')
+client  = import_da('client')
+sign = import_da('sign')
+config_file = import_da('read_config_file')
+messages = import_da('messages')
+
+
+def generate_pub_priv_keys():
+    priv_key = PrivateKey.generate()
+    pub_key = priv_key.public_key
+    return (priv_key, pub_key)
+
+def generate_sign_key():
+    signing_key = nacl.signing.SigningKey.generate()
+    verify_key = signing_key.verify_key
+    verify_key_hex = verify_key.encode(encoder=nacl.encoding.HexEncoder)
+    return signing_key, verify_key_hex
+
+class Olympus(process):
+    def setup(no_of_configuration:int, no_of_replicas:int, num_of_clients:int, 
+        set_of_replicas:set, head_timeout:int, nonhead_timeout:int, checkpt_interval: int):
+        self.configuration = {}
+        for id in range(0, no_of_configuration):
+            self.configuration['config_' + str(id)] = {}
+        self.public_key_map = {}
+        self.priv_key_map = {}
+        self.signing_key_map = {}
+        self.verify_key_hex_map = {}
+        self.current_configuration = 0
+        self.reconfiguring = False
+        self.wedged_statements = []
+        self.caughtup_statements = []
+        self.verified_running_state = False
+        self.send_config_client = {}
+
+        self.result_statements = {}
+        self.wedge_statement_timeout = 30
+        self.caughtup_statement_timeout = 30
+        self.consistent_running_state = {} # dictionary to be copied to new replicas
+
+    def create_keys(reconfig):
+        priv_key, pub_key = generate_pub_priv_keys()
+        public_key_map['head'] = pub_key
+        priv_key_map['head'] = priv_key
+ 
+        priv_key, pub_key = generate_pub_priv_keys()
+        public_key_map['tail'] = pub_key
+        priv_key_map['tail'] = priv_key
+ 
+        for index in range(1, len(configuration['config_' + str(current_configuration)]) - 1):
+            priv_key, pub_key = generate_pub_priv_keys()
+            public_key_map['replica_' + str(index)] = pub_key
+            priv_key_map['replica_' + str(index)] = priv_key
+
+        if not reconfig:
+            priv_key, pub_key = generate_pub_priv_keys()
+            public_key_map['olympus'] = pub_key
+            priv_key_map['olympus'] = priv_key
+
+            for index in range(0, num_of_clients):
+                priv_key, pub_key = generate_pub_priv_keys()
+                public_key_map['client_' + str(index)] = pub_key
+                priv_key_map['client_' + str(index)] = priv_key        
+        
+
+    def create_signing_keys(reconfig):
+        signing_key_map['head'], verify_key_hex_map['head'] = generate_sign_key()
+        signing_key_map['tail'], verify_key_hex_map['tail'] = generate_sign_key()
+        for index in range(1, len(configuration['config_' + str(current_configuration)]) - 1):
+            sign_key, verify_key_hex = generate_sign_key()
+            signing_key_map['replica_' + str(index)] = sign_key
+            verify_key_hex_map['replica_' + str(index)] = verify_key_hex
+
+        if not reconfig:
+            signing_key_map['olympus'], verify_key_hex_map['olympus'] = generate_sign_key()
+
+            for index in range(0, num_of_clients):
+                signing_key_map['client_' + str(index)], verify_key_hex_map['client_' + str(index)] = generate_sign_key()
+
+
+    def verify_order_proof(replica_history, longest_hist_slot, longest_hist_op, replica_id):
+        # why loop here?
+        for order_proof in replica_history:
+            if order_proof.slot == longest_hist_slot:
+                if order_proof.operation != longest_hist_op:
+                    output("Invalid operation detected at slot ", order_proof.slot, " for replica ",replica_id)
+                    return False
+                else:
+                    break    
+        return True
+
+
+    def verify_history(histories, checkpoint_proofs):
+        longest_running_history = []
+        verified = True
+        longest_running_hist_replica = -1
+        valid_quorum = None
+        cnt = 0
+        temp = None
+        t = (no_of_replicas - 1)/2
+        consistent_replicas = {}
+        incorrect_longest_hist_replica = []
+        checkpoint_slots = {}
+        slots_to_consider = []
+
+        # include checkpoint verification
+        # completed checkpoint proof maybe dropped, so longest history might be for a replica which did not see the checkpoint proof
+        # but if more than t+1 replicas have seen the checkpoint proof then, choose the longest history from them
+        for key, value in checkpoint_proofs.items():
+            proof = value
+            if not proof == None:
+                try:
+                    checkpoint_slots[proof.slot] += 1
+                except KeyError:
+                    checkpoint_slots[proof.slot] = 1
+        
+        if len(checkpoint_slots) > 1:
+            for key, value in checkpoint_slots.items():
+                if value >= t + 1:
+                    slots_to_consider.append(key)
+
+        while(cnt < t + 1):
+            for replica_id, history in histories:
+                if len(history) > len(longest_running_history) and not replica_id in incorrect_longest_hist_replica:
+                    if not len(checkpoint_proofs) >= t+1:
+                        longest_running_history = history
+                        longest_running_hist_replica = replica_id
+                    elif len(checkpoint_proofs) >= t+1 and checkpoint_proofs[replica_id].slot in slots_to_consider:
+                        longest_running_history = history
+                        longest_running_hist_replica = replica_id
+
+            output("Olympus: Found longest running history for replica ", longest_running_hist_replica," as : ", longest_running_history)
+            # consistent_replicas.append((longest_running_hist_replica, longest_running_history))
+
+            for replica_id, history in histories:
+                # if cnt >= t + 1:
+                #     break
+                error = False
+                for order_proof in longest_running_history:
+                    verified = verify_order_proof(history, order_proof.slot, order_proof.operation, replica_id)
+                    if not verified:
+                        error = True
+                        break
+
+                if not error:
+                    cnt += 1
+                    output("History of replica ", replica_id, " is consistent with longest running history.")
+                    consistent_replicas[replica_id] = history
+            if cnt < t + 1:
+                output('Matching of other replica histories with the longest history failed. Finding new longest history')
+                incorrect_longest_hist_replica.append(longest_running_hist_replica) #drop this replica the next time
+                cnt = 0
+            if len(incorrect_longest_hist_replica) >= t + 1:
+                output('Olympus: Found more than t replicas faulty. Cannot proceed.')
+                verified = False
+                break
+        output('Exit from the loop')
+        return verified, longest_running_history, consistent_replicas
+        ### original
+        # for replica_id, history in histories:
+        #     if len(history) > len(longest_running_history):
+        #         longest_running_history = history
+        #         longest_running_hist_replica = replica_id
+
+        # output("Olympus: Found longest running history for replica ", longest_running_hist_replica," as : ", longest_running_history)
+
+        # for replica_id, history in histories:
+        #     # if cnt >= t + 1:
+        #     #     break            
+        #     error = False
+        #     for order_proof in longest_running_history:
+        #         verified = verify_order_proof(history, order_proof.slot, order_proof.operation, replica_id)
+        #         if not verified:
+        #             error = True
+        #             break
+
+        #     if not error:
+        #         cnt += 1
+        #         output("History of replica ", replica_id, " is consistent with longest running history.")
+
+        #     if cnt >= t + 1:
+        #         output("Quorum of replicas has consistent valid histories.")
+        #         break
+        #     else:
+        #         #TODO: need to select another quorum
+        #         output("Selecting a different quorum")
+        #         cnt = 0
+            # verified = False
+
+        ### NEW CHANGES - useless
+        # while(cnt < t + 1):
+        #     for replica_id, history in histories:
+        #         if len(history) > len(longest_running_history) and not replica_id == temp:
+        #             longest_running_history = history
+        #             longest_running_hist_replica = replica_id
+
+        #     quorum_with_replica = []
+        #     for q in set_of_quorums:
+        #         if longest_running_hist_replica in q:
+        #             quorum_with_replica.append(q)
+
+        #     output("Olympus: Found longest running history for replica ", longest_running_hist_replica," as : ", longest_running_history)
+
+        #     for quorum in quorum_with_replica:
+        #         for replica_id, history in histories:
+        #             # if cnt >= t + 1:
+        #             #     break
+        #             if replica_id in quorum:
+        #                 error = False
+        #                 for order_proof in longest_running_history:
+        #                     verified = verify_order_proof(history, order_proof.slot, order_proof.operation, replica_id)
+        #                     if not verified:
+        #                         error = True
+        #                         break
+
+        #                 if not error:
+        #                     cnt += 1
+        #                     output("History of replica ", replica_id, " is consistent with longest running history.")
+
+        #         if cnt >= t + 1:
+        #             output("Quorum of replicas has consistent valid histories.")
+        #             break
+        #         else:
+        #             #TODO: need to select another quorum
+        #             output("Selecting a different quorum")
+        #             cnt = 0
+        #             # verified = False
+        #     if cnt < t + 1:
+        #         temp = longest_running_hist_replica
+        #     else:
+        #         break
+
+        # return verified, longest_running_history
+
+
+    def check_caughtup_statements(caughtup_statements):
+        replica_running_hash = caughtup_statements[0][1]
+        for replica_id, running_hash in caughtup_statements:
+            if running_hash != replica_running_hash:
+                output("Replica id :", replica_id, " running state hash value did not match with other replicas running state hash.")
+                return False
+        return True
+
+
+    def run():
+        """Create configuration of replicas, and start them"""
+        configuration['config_' + str(current_configuration)] = create_replica_config(list(set_of_replicas))
+        
+        """Create public and private keys for replicas and client."""
+        self.create_keys(False)
+      
+        self.create_signing_keys(False)
+
+        setup_and_start_replicas(configuration['config_' + str(current_configuration)], public_key_map, priv_key_map, signing_key_map,
+        verify_key_hex_map, head_timeout, nonhead_timeout, checkpt_interval, consistent_running_state)
+
+        #Olympus always stays on
+        await(False)
+
+   
+    def receive(msg=('GetConfiguration', client_id), from_=client):
+        output('Olympus: client requested configuration. System reconfiguring: ', reconfiguring)
+        if not reconfiguring:
+            output('Olympus: Sending configuration to client:', client_id)
+            send(('Configuration', configuration['config_' + str(current_configuration)], current_configuration,), to=client)
+        elif reconfiguring:
+            send_config_client[client_id] = (True, client)
+
+
+    def receive(msg=('GetKeys', client_id), from_=client):
+        output('Sending keys to client:', client_id)
+        send(('Keys', public_key_map, priv_key_map['client_'+ str(client_id)]), to=client)
+
+
+    def receive(msg=('GetSigningKeys', client_id), from_=client):
+        output('Sending signing keys to client:', client_id)
+        send(('SigningKeys', signing_key_map['client_' + str(client_id)], verify_key_hex_map), to=client)
+
+
+    def receive(msg=('ForwardRequest', operation,), from_=replica):
+        #Broadcast msg to all replicas
+        anymsg = "This is Olympus!!"
+        output("handling forward request msg from replica :", operation)
+        if(replica == configuration['config_' + str(current_configuration)]['head']):
+            send(('OlympusRequest', anymsg), to=replica)
+
+
+    # def create_result_proof():
+    #     # result_statements[client_id][0][1][0] == signed result statement
+    #     # result_statements[client_id][0][1][1] == sequence number
+    #     # result_statements[client_id][0][3] == client id
+    #     result_proof = messages.Proof(result_statements[client_id][0][1][0], 1, key, result_statements[client_id][0][1][1], result_statements[client_id][0][3])
+
+    #     statements = result_statements[client_id]
+    #     for index in range(1, len(statements)):
+    #         result_proof.add_statement(statements[index][1])
+
+    #     return result_proof
+
+
+    def send_result_to_client():
+        ## TO TEST
+        cnt = no_of_replicas
+        t = (no_of_replicas - 1) / 2
+        unsigned_result_stmts = []
+
+        results_to_send = {}
+        statements_list = []
+        # for key, value in result_statements[client_id]:
+        output("RR: result_statements :", result_statements)
+        for key, value in result_statements:
+            cnt = no_of_replicas
+            id_client = key
+            op_stmts_dict = value
+            op_seq = None
+            output("RR: key, value :", key, value)
+            for k, v in op_stmts_dict:
+                op_seq = k
+                output("RR: k, v:", k, v)
+                id_replica = v[0]
+                signed_statement = v[1]
+                verified_statement = sign.verify_sign(verify_key_hex_map[id_replica], signed_statement)
+                if verified_statement == None:
+                    cnt -= 1
+                else:
+                    try:
+                        results_to_send[k].append(signed_statement)
+                    except KeyError:
+                        results_to_send[k] = []
+                        results_to_send[k].append(signed_statement)
+            if len(results_to_send[op_seq]) >= t + 1:
+                slot = 1
+                operation = op_seq[0]
+                seq_num = op_seq[1]
+                result_proof = messages.Proof(results_to_send[op_seq], 1, key, operation, seq_num, id_client)
+                result_proof.statements = value
+
+                #the order proof is complete, send result to client
+                send(('OlympusResult', result_proof, result, str(client_id) + '_' + str(result_proof.sequence_number), result_proof.operation), to=configuration['config_' + str(current_configuration)][client_id])
+                output("Olympus: sent reply to client", client_id, 'for operation', operation)
+
+        # for key, value in results_to_send:
+        #     if len(value) >= t + 1:
+        #         slot = 1
+        #         operation = key[0]
+        #         seq_num = key[1]
+        #         result_proof = messages.Proof(value[0], 1, key, operation, seq_num, )
+        #         result_proof.statements = value
+
+        #         #the order proof is complete, send result to client
+        #         send(('OlympusResult', result_proof, result, str(client_id) + '_' + str(result_proof.sequence_number), result_proof.operation), to=configuration['config_' + str(current_configuration)][client_id])
+        #         output("Olympus: sent reply to client", client_id, 'for operation', operation)
+
+        # for stmt in result_statements[client_id]:
+        #     statement = stmt[1]
+        #     signed_statement = statement[0]
+        #     verified_statement = sign.verify_sign(verify_key_hex_map[stmt[0]], signed_statement)
+        #     if verified_statement == None:
+        #         cnt -= 1
+        #     else:
+        #         unsigned_result_stmts.append((stmt[0], verified_statement, statement[1]))
+        # # result_proof = messages.Proof(result_statements[client_id][0][1], 1, key, 
+        # # result_statements[client_id][0][2], result_statements[client_id][0][3])
+        # if cnt > t + 1:
+        #     operations = {}
+        #     key = None
+        #     for stmt in unsigned_result_stmts:
+        #         try:
+        #             operations[stmt[1].operation].append(stmt[0])
+        #         except KeyError:
+        #             operations[stmt[1].operation] = []
+        #             operations[stmt[1].operation].append(stmt[0])
+
+        #     if len(operations) == 1:
+        #         key = list(operations.keys())[0]
+        #         if len(operations[key]) >= t + 1:
+        #             result_proof = create_result_proof(key)
+        #     else:
+        #         quorums = []
+        #         for op in operations:
+        #             if len(operations[op]) >= t + 1:
+        #                 quorums.append(operations[op])
+
+        #         statements = result_statements[client_id]
+        #         for index in range(0, len(statements)):
+        #             if not statements[index][0] in quorums[0]:
+        #                 del statements[index]
+
+        #         result_statements[client_id] = statements
+        #     result_proof = create_result_proof()   
+
+        #     #the order proof is complete, send result to client
+        #     send(('OlympusResult', result_proof, result, str(client_id) + '_' + str(result_proof.sequence_number), result_proof.operation), to=configuration['config_' + str(current_configuration)][client_id])
+        #     output("Olympus: sent reply to client", client_id)
+
+
+    def receive(msg=('ReconfigurationRequest', reason, operation, sequence_number, client_id, replica_id, ), from_=replica):
+        output("Olympus: Received reconfiguration request from", replica_id, "for ", reason,"in operation ", operation)
+        longest_running_history = None
+ 
+        if not reconfiguring:
+            reconfiguring = True
+            config = configuration['config_' + str(current_configuration)]
+            send_wegde_requests(config)
+
+            if await(len(listof(replica, received(('WedgedStatement', signed_wedged_statement, replica_id,), from_=replica))) == len(config)):
+                output("Olympus: Received wedge statements from all replicas.")
+            elif timeout(wedge_statement_timeout):
+                output("Olympus: Timeout occured for wedge statements.")
+            longest_running_history, consistent_replicas = check_wedged_statements(wedged_statements)
+            output('Consistent replicas', consistent_replicas)
+
+            caughtup_seq_no = 0
+            for replica_id, statement in wedged_statements:
+                if replica_id in list(consistent_replicas.keys()):
+                    verified_statement = sign.verify_sign(verify_key_hex_map[replica_id], statement)
+                    verified_statement = pickle.loads(verified_statement)
+                    catchup_statement = longest_running_history[len(verified_statement.history):]
+                    #send catchup statement
+                    output("Olympus : Sending catchup statement to replica ", replica_id)
+                    send(('CatchupStatement', catchup_statement, client_id, caughtup_seq_no), to=config[replica_id])
+                    caughtup_seq_no += 1
+                else: 
+                    verified = False
+
+            if await(len(listof(replica, received(('CaughtupStatement', hashed_running_state, replica_id), from_=replica))) == len(consistent_replicas)):
+                output("Olympus :Received all caughtup statements")
+            elif timeout(caughtup_statement_timeout):
+                output("Olympus: Timeout occurred for caught up statements. Received", len(caughtup_statements), " caught statements.")
+
+            verified = check_caughtup_statements(caughtup_statements)
+            if verified:
+                output("All replicas caught up messages matched successfully.")
+            else:
+                #TODO: Need to choose different quorum
+                # if length of consistent_replicas == t+1 and it was not verified, no progress?
+                pass
+
+            #send_result_to_client()
+
+            output("Olympus: Sending getrunning state request.")
+            sequence_no = 0
+            send(('GetRunningState', sequence_no,), to=config['head'])
+            if not verified_running_state:
+                for index in range(1, len(config) - 1):
+                    if not verified_running_state:
+                        sequence_no += 1
+                        send(('GetRunningState', sequence_no,), to=config['replica_' + str(index)])
+                if not verified_running_state:
+                    sequence_no += 1
+                    send(('GetRunningState', sequence_no,), to=config['tail'])  
+
+            output("Olympus: Creating init hist statement.")
+            #init_hist_statement = create_hist_statement(hashed_running_state)
+            #send init_hist_statement to new configuration
+            await(verified_running_state)
+            output('Olympus decided consistent running state. State: ', consistent_running_state)
+
+            #killing exisiting replicas
+            output("Sending terminate message to each replica")
+            send('Terminate', to=configuration['config_' + str(current_configuration)]['head'])
+            for index in range(1, len(config) - 1):
+                send('Terminate', to=configuration['config_' + str(current_configuration)]['replica_' + str(index)])
+            send(('Terminate'), to=configuration['config_' + str(current_configuration)]['tail'])
+
+            create_new_replicas()
+
+            send('Hello', to=configuration['config_' + str(current_configuration)]['head'])
+            for index in range(1, len(config) - 1):
+                send('Hello', to=configuration['config_' + str(current_configuration)]['replica_' + str(index)])
+            send(('Hello'), to=configuration['config_' + str(current_configuration)]['tail'])
+
+            await(len(listof(replica, received(('ReplicaUp', replica_id), from_=replica))) == len(configuration['config_' + str(current_configuration)]))
+            reconfiguring = False
+            output('Value of config client', send_config_client)
+            if client_id in send_config_client and send_config_client[client_id][0]:
+                output('current_configuration ', current_configuration)
+                output('Olympus: Sending new configuration to client', client_id)
+                send(('Configuration', configuration['config_' + str(current_configuration)], current_configuration,), to=send_config_client[client_id][1])
+
+
+    def receive(msg=('ReplicaUp', replica_id), from_=replica):
+        output("Olympus received up message from replica ", replica_id)
+
+
+    def create_new_replicas():
+        current_configuration += 1
+        configuration['config_' + str(current_configuration)] = {}
+
+        replicas = new(replica.Replica, num=no_of_replicas, at='ReplicasNode')
+        configuration['config_' + str(current_configuration)] = create_replica_config(list(replicas))
+        output('Olympus: creating new configuration. New config number ', current_configuration)
+        """Create public and private keys for replicas"""
+        output('Olympus: Creating new keys for replicas')
+        self.create_keys(True)
+        self.create_signing_keys(True)
+        setup_and_start_replicas(configuration['config_' + str(current_configuration)], public_key_map, priv_key_map, signing_key_map,
+        verify_key_hex_map, head_timeout, nonhead_timeout, checkpt_interval, consistent_running_state)
+
+
+    def send_wegde_requests(config):
+        sequence_no = 0
+        output("Olympus: Sending wedge requests to each replica")
+        send(('WedgeRequest', sequence_no), to=config['head'])
+        for index in range(1, len(config) - 1):
+            sequence_no += 1
+            send(('WedgeRequest', sequence_no), to=config['replica_' + str(index)])
+        sequence_no += 1
+        send(('WedgeRequest', sequence_no), to=config['tail'])        
+        
+    def receive(msg=('WedgedStatement', wedged_statement, replica_id,), from_=replica):
+        output("Olympus received wedge statement from replica ", replica_id)
+        wedged_statements.append((replica_id, wedged_statement))
+
+
+    def receive(msg=('CaughtupStatement', hashed_running_state, replica_id), from_=replica):
+        caughtup_statements.append((replica_id, hashed_running_state))
+        # client_dict = {}
+        # try:
+        #    client_dict = result_statements[client_id]
+        # except KeyError:
+        #    result_statements[client_id] = client_dict
+
+        # # key   = (operation, seq)
+        # # value = result statement
+        # output('before for loop')
+        # for key, value in latest_result_stmt:
+        #    try:
+        #        output('in try')
+        #        result_statements[client_id][key].append((replica_id, value))
+        #    except KeyError:
+        #        output('in catch')
+        #        output('dict :: ', result_statements, ' :: ' ,client_id)
+        #        output('dict :: ', result_statements[client_id])
+        #        output('key :: ', key)
+        #        result_statements[client_id][key] = []
+        #        output('after empty list')
+        #    result_statements[client_id][key].append((replica_id, value))
+        #    output('after appending')
+        # try:
+        #     # latest_result_stmt is a dict of the form
+        #     # (operation, seq) = result statement
+        #     result_statements[client_id].append((replica_id, latest_result_stmt, client_id))
+        # except KeyError:
+        #     result_statements[client_id] = {}
+        #     result_statements[client_id][replica_id] = latest_result_stmt, client_id
+        # output('latest result stmt', result_statements)
+
+
+    def receive(msg=('RunningState', running_state, replica_id,), from_=replica):
+        output("Olympus : Received running state from replica ", replica_id, replica)
+        hashed_running_state = sign.generate_hash(pickle.dumps(running_state))
+        #if hashed_running_state == caughtup_statements[0][1] and not verified_running_state:
+        if hashed_running_state == caughtup_statements[0][1]:
+            verified_running_state = True
+            consistent_running_state = running_state
+            output("Hash value of running state received matched with caughtup messages hashed running state value.")
+        else:
+            output("Hash value of running state received not matched with caughtup messages hashed running state value")
+ 
+
+    def check_wedged_statements(wedged_statements):
+        count = no_of_replicas
+        t = int((no_of_replicas - 1)/2)
+        error = False
+        valid_signatures = []
+        histories = []
+        checkpoint_proofs = {}
+        running_states = []
+        set_of_quorums = []
+
+        # replicas = list(configuration['config_' + str(current_configuration)].keys())
+        # set_of_quorums = list(itertools.combinations(replicas, t+1))
+        # output('quorums', set_of_quorums)
+
+        for element in wedged_statements:
+            if count < t + 1:
+                output('Olympus: Could not obtain a quorum of t+1 replicas')
+                error = True
+                break
+
+            replica_id = element[0]
+            statement  = element[1]
+            #verify signature
+            verified_statement = sign.verify_sign(verify_key_hex_map[replica_id], statement)
+            if verified_statement:
+                verified_statement = pickle.loads(verified_statement)
+                histories.append((replica_id, verified_statement.history))
+                if not verified_statement.checkpoint_proof == None:
+                    checkpoint_proofs[replica_id] = verified_statement.checkpoint_proof
+                running_states.append((replica_id, verified_statement.running_state))
+                valid_signatures.append(replica_id)
+            else:
+                count -= 1
+
+        verified = False
+        if not error:
+            output("Olympus sign verified for all wedge statements.")
+            verified, longest_running_history, consistent_replicas = verify_history(histories, checkpoint_proofs)
+            # get history with maximum length from list
+            # for all histories, check that the slot and operation upto the common prefix are equal
+            # find t+1 equal histories and choose as quorum
+            # if t+1 is not found, choose different quorum
+            # find difference of longest history and each replica's history
+            # send sequence of operations to all replicas
+            # each replica will execute the sent operations on its dictionary
+            # calculate hash of dictionary at each replica and send to olympus
+            # olympus collect all hashes, and check that all are equal
+            # if any is unequal, choose new quorum from received hashes
+            # don't repeat steps from above because we already have all values corresponding to all replicas
+
+        if verified:
+            return longest_running_history, consistent_replicas
+        
+        return None
+
+
+    def create_replica_config(list_of_replicas):
+        configuration['config_' + str(current_configuration)]['head'] = list_of_replicas[0]
+        configuration['config_' + str(current_configuration)]['tail'] = list_of_replicas[-1]
+
+        index = 1
+        for replica_itr in list_of_replicas[1:-1]:
+            configuration['config_' + str(current_configuration)]['replica_' + str(index)] = replica_itr
+            index += 1
+
+        # copy client information from the previous configuration map
+
+
+
+        return configuration['config_' + str(current_configuration)]
+
+
+    def setup_and_start_replicas(configuration, public_key_map, priv_key_map, signing_key_map, verify_key_hex_map, head_timeout, nonhead_timeout, checkpt_interval, consistent_running_state):
+        #setup and start head and tail
+        setup(configuration['head'], (self, configuration, public_key_map, priv_key_map['head'],
+        signing_key_map['head'], verify_key_hex_map, 'head', 'ACTIVE', head_timeout, nonhead_timeout, checkpt_interval, consistent_running_state))
+        setup(configuration['tail'], (self, configuration, public_key_map, priv_key_map['tail'],
+        signing_key_map['tail'], verify_key_hex_map, 'tail', 'ACTIVE', head_timeout, nonhead_timeout, checkpt_interval, consistent_running_state))
+        start(configuration['head'])
+        start(configuration['tail'])
+
+        #setup and start intermediate replicas
+        for index in range(1, len(configuration) - 1):
+            setup(configuration['replica_' + str(index)], (self, configuration, public_key_map, priv_key_map['replica_'
+            + str(index)], signing_key_map['replica_' + str(index)], verify_key_hex_map, 'replica_' + str(index), 'ACTIVE', head_timeout, nonhead_timeout, checkpt_interval, consistent_running_state))
+            start(configuration['replica_' + str(index)])
+
+
+def main():
+    print('Olympus main method')
